@@ -47,10 +47,10 @@ The Worker HTTP interface is the seam between client and server. D1 and R2 bindi
 
 ACRCloud is isolated behind `RecognitionProvider`. After R2 upload completes, the authenticated browser sends the original video directly through an ACRCloud presigned URL. Recognition runs independently of upload completion and playback; provider failure does not affect the private R2 original.
 
-The committed `RECOGNITION_MONTHLY_LIMIT` is `0`, so recognition initially ends in the visible **budget exhausted** state. Before enabling it:
+Recognition is configured for the ACRCloud File Scanning container in `eu-west-1`, with a conservative limit of 10 new recognition jobs per month. To change providers or spending:
 
-1. Confirm ACRCloud File Scanning + Cover Song Identification pricing for the account and create a container in the configured region.
-2. Set `ACRCLOUD_REGION` and a positive `RECOGNITION_MONTHLY_LIMIT` in `wrangler.jsonc` based on the accepted spend.
+1. Confirm ACRCloud File Scanning + Cover Song Identification pricing for the account.
+2. Adjust `ACRCLOUD_REGION` and `RECOGNITION_MONTHLY_LIMIT` in `wrangler.jsonc`.
 3. Store credentials interactively; never put values in source or shell history:
 
    ```bash

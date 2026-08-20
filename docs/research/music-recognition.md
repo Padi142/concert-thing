@@ -14,7 +14,7 @@ The Owner chose:
 - pragmatic Song identity: title + primary Artist
 - one automatic retry (two attempts total)
 
-The monthly recognition limit defaults to zero until the Owner verifies ACRCloud's account-specific price and deliberately configures a positive cap. This is the hard spend control; upload and playback do not depend on recognition.
+The deployed archive uses a conservative limit of 10 new recognition jobs per month. This is the hard spend control; upload and playback do not depend on recognition.
 
 ## Provider comparison
 
