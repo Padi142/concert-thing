@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { ImagePlus } from "lucide-react";
-import { api } from "../api";
+import { ApiError, api } from "../api";
+import { sha256File } from "../mediaHash";
 import { loadUploadState, normalizeUploadState } from "../uploadState";
 import { videoDuration } from "../mediaMetadata";
 import { mediaTimestamp } from "../mediaTimestamp";
@@ -66,13 +67,13 @@ export default function Uploader({ shows, onMediaComplete, report }: { shows: Sh
     throw lastError;
   }
 
-  async function getState(file: File): Promise<{ state: UploadState; fingerprint: string }> {
+  async function getState(file: File, contentHash: string | null): Promise<{ state: UploadState; fingerprint: string }> {
     const fingerprint = fingerprintFor(file);
     const saved = loadUploadState(localStorage.getItem(fingerprint));
     if (saved) return { state: saved, fingerprint };
     const response = await api<unknown>("/api/uploads", {
       method: "POST",
-      body: JSON.stringify({ name: file.name, type: file.type, size: file.size }),
+      body: JSON.stringify({ name: file.name, type: file.type, size: file.size, ...(contentHash ? { contentHash } : {}) }),
     });
     const state = normalizeUploadState(response);
     localStorage.setItem(fingerprint, JSON.stringify(state));
@@ -80,7 +81,9 @@ export default function Uploader({ shows, onMediaComplete, report }: { shows: Sh
   }
 
   async function uploadFile(file: File, queueId: string, selectedShowId: string) {
-    const { state, fingerprint } = await getState(file);
+    patch(queueId, { status: file.type.startsWith("video/") ? "Checking for duplicate" : "Starting upload" });
+    const contentHash = file.type.startsWith("video/") ? await sha256File(file) : null;
+    const { state, fingerprint } = await getState(file, contentHash);
     patch(queueId, { status: "Reading media date" });
     const [timestamp, durationMs] = await Promise.all([mediaTimestamp(file), videoDuration(file)]);
     await api(`/api/uploads/${state.mediaId}`, {
@@ -168,8 +171,13 @@ export default function Uploader({ shows, onMediaComplete, report }: { shows: Sh
         try {
           await uploadFile(entry.file, entry.queueId, showId);
         } catch (error) {
-          patch(entry.queueId, { status: "Paused — reselect to resume", active: false, resumable: true });
-          report(`${entry.file.name}: ${(error as Error).message}`, true);
+          if (error instanceof ApiError && error.status === 409 && error.data.duplicate === true) {
+            patch(entry.queueId, { status: "Duplicate — not uploaded", active: false, resumable: false });
+            report(`${entry.file.name}: Duplicate video — not uploaded`, true);
+          } else {
+            patch(entry.queueId, { status: "Paused — reselect to resume", active: false, resumable: true });
+            report(`${entry.file.name}: ${(error as Error).message}`, true);
+          }
         }
       }
     };

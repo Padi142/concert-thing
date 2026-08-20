@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { normalizeUploadState } from "../src/client/uploadState";
 import { parseMp4CreationTime } from "../src/client/mediaTimestamp";
 import { formatDuration } from "../src/client/mediaMetadata";
+import { sha256File } from "../src/client/mediaHash";
 
 const freshResponse = {
   mediaId: "media-1",
@@ -20,5 +21,6 @@ assert.equal(parseMp4CreationTime(mp4Header), "2020-01-01T00:00:00.000Z");
 assert.equal(formatDuration(65_000), "1:05");
 assert.equal(formatDuration(3_665_000), "1:01:05");
 assert.equal(formatDuration(null), null);
+assert.equal(await sha256File(new Blob(["concert"])), "5359565a1aca1516be1165f6a3767af8aac318dd9de9e501e1abb4cff0a8aa2d");
 
 console.log("upload state and media timestamp regressions: passed");

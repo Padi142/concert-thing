@@ -17,8 +17,9 @@ A private, single-Owner archive for concert photos and videos, deployed on Cloud
 - Automatic, asynchronous ACRCloud Song recognition using private direct video uploads
 - Timestamped Song Match review: confirm, reject, edit, or manually add
 - Library search by confirmed Song title or primary Artist
+- SHA-256 duplicate detection prevents the same video bytes from being uploaded twice
 
-Share Links, duplicate detection, and deletion are deliberately deferred.
+Share Links and deletion are deliberately deferred.
 
 Automatic Assignment occurs only when a media timestamp falls within exactly one Show. A Show without an end time uses a conservative six-hour window from its start; overlapping or unmatched windows leave the Media Item in the Inbox. Owner Assignment always takes precedence.
 

@@ -30,13 +30,37 @@ export async function beginUpload(request: Request, env: Env): Promise<Response>
   if (!Number.isSafeInteger(byteSize) || byteSize <= 0) throw new HttpError(400, "size must be a positive integer");
   const mediaType = contentType.startsWith("image/") ? "photo" : contentType.startsWith("video/") ? "video" : null;
   if (!mediaType) throw new HttpError(415, "Only photo and video Media Items are supported");
+  const contentHash = mediaType === "video" ? text(input.contentHash, "contentHash").toLowerCase() : null;
+  if (contentHash && !/^[a-f0-9]{64}$/.test(contentHash)) throw new HttpError(400, "contentHash must be a SHA-256 hash");
+
+  async function duplicateResponse() {
+    const duplicate = await env.DB.prepare(`
+      SELECT id FROM media_items
+      WHERE content_hash = ? AND status IN ('uploading', 'ready')
+      LIMIT 1
+    `).bind(contentHash).first<{ id: string }>();
+    return duplicate
+      ? json({ error: "Duplicate video — not uploaded", duplicate: true, duplicateMediaId: duplicate.id }, 409)
+      : null;
+  }
+
+  const duplicate = await duplicateResponse();
+  if (duplicate) return duplicate;
+
   const id = crypto.randomUUID();
   const key = `originals/${id}/${safeName(originalName)}`;
   const upload = await env.MEDIA.createMultipartUpload(key, { httpMetadata: { contentType } });
-  await env.DB.prepare(`
-    INSERT INTO media_items (id,object_key,original_name,media_type,content_type,byte_size,status,upload_id,created_at)
-    VALUES (?,?,?,?,?,?,'uploading',?,?)
-  `).bind(id, key, originalName, mediaType, contentType, byteSize, upload.uploadId, new Date().toISOString()).run();
+  try {
+    await env.DB.prepare(`
+      INSERT INTO media_items (id,object_key,original_name,media_type,content_type,byte_size,content_hash,status,upload_id,created_at)
+      VALUES (?,?,?,?,?,?,?,'uploading',?,?)
+    `).bind(id, key, originalName, mediaType, contentType, byteSize, contentHash, upload.uploadId, new Date().toISOString()).run();
+  } catch (error) {
+    try { await upload.abort(); } catch (abortError) { console.error("Could not abort duplicate multipart upload", abortError); }
+    const duplicateAfterRace = await duplicateResponse();
+    if (duplicateAfterRace) return duplicateAfterRace;
+    throw error;
+  }
   return json({ mediaId: id, uploadId: upload.uploadId, chunkSize: 8 * 1024 * 1024, completed: [] }, 201);
 }
 
