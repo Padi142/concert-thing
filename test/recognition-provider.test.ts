@@ -16,7 +16,10 @@ const fake = new FakeRecognitionProvider([candidate]);
 assert.deepEqual(await fake.result("fake-job"), { state: "completed", matches: [candidate] });
 
 const originalFetch = globalThis.fetch;
-globalThis.fetch = async () => new Response(JSON.stringify({ data: {
+let submittedBody: Record<string, unknown> | null = null;
+globalThis.fetch = async (_input, init) => {
+  if (init?.method === "POST" && typeof init.body === "string") submittedBody = JSON.parse(init.body) as Record<string, unknown>;
+  return new Response(JSON.stringify({ data: {
   id: "provider-job",
   state: 1,
   results: { cover_songs: [{ offset: 12, played_duration: 33, result: {
@@ -24,6 +27,7 @@ globalThis.fetch = async () => new Response(JSON.stringify({ data: {
     sample_begin_time_offset_ms: 500, external_ids: { isrc: "EXAMPLE" },
   } }] },
 } }), { headers: { "content-type": "application/json" } });
+};
 try {
   const provider = new AcrCloudProvider({ accessToken: "secret", containerId: "42", region: "us-west-2" });
   const result = await provider.result("provider-job");
@@ -34,6 +38,8 @@ try {
     assert.equal(result.matches[0].endMs, 45_000);
     assert.equal(result.matches[0].externalIds.isrc, "EXAMPLE");
   }
+  await provider.submitUrl("https://archive.example/recognition-source", "job.mp4");
+  assert.deepEqual(submittedBody, { data_type: "audio_url", url: "https://archive.example/recognition-source", name: "job.mp4" });
 } finally {
   globalThis.fetch = originalFetch;
 }

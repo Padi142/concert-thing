@@ -45,7 +45,7 @@ The Worker HTTP interface is the seam between client and server. D1 and R2 bindi
 
 ## Song recognition
 
-ACRCloud is isolated behind `RecognitionProvider`. After R2 upload completes, the authenticated browser sends the original video directly through an ACRCloud presigned URL. Recognition runs independently of upload completion and playback; provider failure does not affect the private R2 original.
+ACRCloud is isolated behind `RecognitionProvider`. After R2 upload completes, the Worker gives ACRCloud a temporary, unguessable download capability for the private original. ACRCloud pulls and processes the video asynchronously, so the browser can close after submission. Provider failure does not affect the private R2 original.
 
 Recognition is configured for the ACRCloud File Scanning container in `eu-west-1`, with a conservative limit of 10 new recognition jobs per month. To change providers or spending:
 

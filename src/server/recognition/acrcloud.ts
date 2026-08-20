@@ -96,6 +96,25 @@ export class AcrCloudProvider implements RecognitionProvider {
     }
   }
 
+  async submitUrl(url: string, filename: string) {
+    const existingId = await this.submittedFile(filename);
+    if (existingId) return { providerJobId: existingId };
+    try {
+      const response = record(await this.request("/files", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ data_type: "audio_url", url, name: filename }),
+      }));
+      const data = record(response.data ?? response) as AcrFile;
+      if (typeof data.id !== "string") throw new Error("ACRCloud did not return a file id");
+      return { providerJobId: data.id };
+    } catch (error) {
+      const recoveredId = await this.submittedFile(filename).catch(() => null);
+      if (recoveredId) return { providerJobId: recoveredId };
+      throw error;
+    }
+  }
+
   async result(providerJobId: string): Promise<ProviderResult> {
     const response = record(await this.request(`/files/${encodeURIComponent(providerJobId)}`));
     const rawData = response.data ?? response;

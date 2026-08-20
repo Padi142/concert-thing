@@ -4,7 +4,7 @@ Researched 2026-08-20 from provider and platform primary sources. Provider accur
 
 ## Decision
 
-Use **ACRCloud File Scanning**, with a provider-neutral recognition interface. Recognition runs automatically for newly uploaded videos. The browser obtains a provider presigned upload through the Worker and sends the original video directly to ACRCloud. ACRCloud performs its own asynchronous traversal; the Worker polls and persists results.
+Use **ACRCloud File Scanning**, with a provider-neutral recognition interface. Recognition runs automatically for newly uploaded videos. The Worker gives ACRCloud a temporary, unguessable URL for the private original. ACRCloud pulls the video and performs its own asynchronous traversal; the Worker polls and persists results. The source capability expires after a day and stops serving once the job reaches a terminal state.
 
 The Owner chose:
 
@@ -33,11 +33,11 @@ The deployed archive uses a conservative limit of 10 new recognition jobs per mo
 
 One concert video can contain multiple Songs. A sequence of short-window Identification calls would require choosing a sampling interval, can miss short songs and transitions, and makes request count proportional to duration. File Scanning's traversal is the provider surface intended for multiple results across one file.
 
-Direct video upload avoids a 32 MB FFmpeg WebAssembly runtime and substantial browser CPU/memory use. The trade-off is that ACRCloud temporarily receives the full original video rather than audio alone. Existing videos are streamed from the authenticated private content endpoint to the provider upload. The R2 upload remains complete and playable when recognition fails.
+Provider-pulled video avoids a 32 MB FFmpeg WebAssembly runtime, substantial browser CPU/memory use, and any need to keep the browser open. The trade-off is that ACRCloud temporarily receives the full original video rather than audio alone. The R2 upload remains complete and playable when recognition fails.
 
 ## Async/orchestration choice
 
-ACRCloud File Scanning is already an asynchronous durable job. D1 stores local jobs and attempts; the client polls status, and provider candidate upserts are idempotent. A Cloudflare Queue or Workflow would add a provisioned resource without improving this direct provider upload flow. Cloudflare recommends Queues for simple single-step background work and Workflows for durable multi-step execution; either can be added later if extraction moves to a server-side media processor. [Workers best practices](https://developers.cloudflare.com/workers/best-practices/workers-best-practices/), [Queues limits](https://developers.cloudflare.com/queues/platform/limits/), [Workflows limits](https://developers.cloudflare.com/workflows/reference/limits/)
+ACRCloud File Scanning is already an asynchronous durable job. D1 stores local jobs and attempts; the client polls status, and provider candidate upserts are idempotent. A Cloudflare Queue or Workflow would add a provisioned resource without improving this provider-pulled flow. Cloudflare recommends Queues for simple single-step background work and Workflows for durable multi-step execution; either can be added later if extraction moves to a server-side media processor. [Workers best practices](https://developers.cloudflare.com/workers/best-practices/workers-best-practices/), [Queues limits](https://developers.cloudflare.com/queues/platform/limits/), [Workflows limits](https://developers.cloudflare.com/workflows/reference/limits/)
 
 ## Primary sources
 

@@ -2,7 +2,6 @@ import { api } from "./api";
 import type { RecognitionStatus } from "./types";
 
 type RecognitionJob = { id: string; status: RecognitionStatus; attempt_count: number; last_error?: string | null };
-type PreparedUpload = { jobId: string; url: string; key: string; headers: Record<string, string> };
 
 async function recognitionJob(mediaId: string, rerun: boolean) {
   return api<RecognitionJob>(`/api/media/${mediaId}/recognition`, {
@@ -11,68 +10,27 @@ async function recognitionJob(mediaId: string, rerun: boolean) {
   });
 }
 
-let storedVideoQueue: Promise<void> = Promise.resolve();
-
-function serializeStoredVideo<T>(work: () => Promise<T>, progress?: (message: string) => void): Promise<T> {
-  progress?.("Queued for video transfer");
-  const result = storedVideoQueue.then(work, work);
-  storedVideoQueue = result.then(() => undefined, () => undefined);
-  return result;
-}
-
-async function prepareOriginal(job: RecognitionJob) {
-  return api<PreparedUpload>(`/api/recognition/${job.id}/upload`, { method: "POST" });
-}
-
-async function sendOriginal(job: RecognitionJob, prepared: PreparedUpload, body: BodyInit, progress?: (message: string) => void) {
-  try {
-    progress?.("Sending video for recognition");
-    const response = await fetch(prepared.url, { method: "PUT", headers: prepared.headers, body });
-    if (!response.ok) throw new Error(`Recognition upload failed (${response.status})`);
-    return await api<RecognitionJob>(`/api/recognition/${job.id}/submit`, { method: "POST", body: JSON.stringify({}) });
-  } catch (error) {
-    await api(`/api/recognition/${job.id}/fail`, { method: "POST", body: JSON.stringify({}) }).catch(() => undefined);
-    throw error;
-  }
-}
-
-async function uploadOriginal(job: RecognitionJob, body: BodyInit, progress?: (message: string) => void) {
-  return sendOriginal(job, await prepareOriginal(job), body, progress);
-}
-
-async function recognizeAttempt(mediaId: string, body: BodyInit, progress?: (message: string) => void, rerun = false) {
+async function recognizeAttempt(mediaId: string, progress?: (message: string) => void, rerun = false) {
   const job = await recognitionJob(mediaId, rerun);
   if (job.status !== "preparing" && job.status !== "failed") return job;
-  return uploadOriginal(job, body, progress);
+  await api(`/api/recognition/${job.id}/upload`, { method: "POST" });
+  progress?.("Submitting video for recognition");
+  return api<RecognitionJob>(`/api/recognition/${job.id}/submit`, { method: "POST", body: JSON.stringify({}) });
 }
 
-export async function recognizeVideo(mediaId: string, file: File, progress?: (message: string) => void, rerun = false): Promise<RecognitionJob> {
+async function recognizeWithRetry(mediaId: string, progress?: (message: string) => void, rerun = false): Promise<RecognitionJob> {
   try {
-    return await recognizeAttempt(mediaId, file, progress, rerun);
+    return await recognizeAttempt(mediaId, progress, rerun);
   } catch {
     progress?.("Retrying recognition once");
-    return recognizeAttempt(mediaId, file, progress, false);
+    return recognizeAttempt(mediaId, progress, false);
   }
+}
+
+export function recognizeVideo(mediaId: string, _file: File, progress?: (message: string) => void, rerun = false) {
+  return recognizeWithRetry(mediaId, progress, rerun);
 }
 
 export function recognizeStoredVideo(mediaId: string, _originalName: string, _contentType: string, progress?: (message: string) => void, rerun = false) {
-  return serializeStoredVideo(async () => {
-    const job = await recognitionJob(mediaId, rerun);
-    if (job.status !== "preparing" && job.status !== "failed") return job;
-    const prepared = await prepareOriginal(job);
-    progress?.("Reading private original");
-    const response = await fetch(`/api/media/${mediaId}/content`, { credentials: "same-origin" });
-    if (!response.ok) {
-      await api(`/api/recognition/${job.id}/fail`, { method: "POST", body: JSON.stringify({}) }).catch(() => undefined);
-      throw new Error("Private original could not be read");
-    }
-    const original = await response.blob();
-    try {
-      return await sendOriginal(job, prepared, original, progress);
-    } catch {
-      progress?.("Retrying recognition once");
-      const retry = await recognitionJob(mediaId, false);
-      return uploadOriginal(retry, original, progress);
-    }
-  }, progress);
+  return recognizeWithRetry(mediaId, progress, rerun);
 }

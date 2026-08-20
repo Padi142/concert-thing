@@ -1,5 +1,6 @@
 import type { Env } from "../env";
 import { body, HttpError, json, text } from "../http";
+import { serveMedia } from "../media";
 import { AcrCloudProvider } from "./acrcloud";
 import type { ProviderMatch, RecognitionProvider } from "./provider";
 
@@ -94,6 +95,11 @@ export async function requestRecognition(request: Request, env: Env, mediaId: st
   return json({ id, media_id: mediaId, status, attempt_count: retry ? existing.attempt_count : 0 }, 201);
 }
 
+function sourceToken(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  return [...bytes].map(byte => byte.toString(16).padStart(2, "0")).join("");
+}
+
 export async function prepareRecognitionUpload(env: Env, jobId: string): Promise<Response> {
   const current = await job(env, jobId);
   if (current.status === "budget_exhausted") return json(current);
@@ -101,19 +107,12 @@ export async function prepareRecognitionUpload(env: Env, jobId: string): Promise
   if (current.attempt_count >= 2) throw new HttpError(409, "Recognition retry limit reached");
   const attemptNumber = current.attempt_count + 1;
   const now = new Date().toISOString();
-  try {
-    const source = await recognitionFilename(env, current);
-    const upload = await provider(env).prepareUpload(source.filename, source.contentType);
-    await env.DB.batch([
-      env.DB.prepare("UPDATE recognition_jobs SET attempt_count = ?, provider_upload_key = ?, status = 'preparing', last_error = NULL, updated_at = ? WHERE id = ?").bind(attemptNumber, upload.key, now, jobId),
-      env.DB.prepare("INSERT INTO recognition_attempts (id,job_id,attempt_number,status,created_at) VALUES (?,?,?,'started',?)").bind(crypto.randomUUID(), jobId, attemptNumber, now),
-    ]);
-    return json({ jobId, ...upload });
-  } catch (error) {
-    const message = error instanceof HttpError ? error.message : "Recognition provider is unavailable";
-    await env.DB.prepare("UPDATE recognition_jobs SET attempt_count = ?, status = 'failed', last_error = ?, updated_at = ? WHERE id = ?").bind(attemptNumber, message, now, jobId).run();
-    throw error;
-  }
+  const token = sourceToken();
+  await env.DB.batch([
+    env.DB.prepare("UPDATE recognition_jobs SET attempt_count = ?, provider_upload_key = ?, status = 'preparing', last_error = NULL, updated_at = ? WHERE id = ?").bind(attemptNumber, token, now, jobId),
+    env.DB.prepare("INSERT INTO recognition_attempts (id,job_id,attempt_number,status,created_at) VALUES (?,?,?,'started',?)").bind(crypto.randomUUID(), jobId, attemptNumber, now),
+  ]);
+  return json({ jobId });
 }
 
 export async function failRecognitionAttempt(env: Env, jobId: string): Promise<Response> {
@@ -127,13 +126,14 @@ export async function failRecognitionAttempt(env: Env, jobId: string): Promise<R
   return json({ id: jobId, status: "failed", attempt_count: current.attempt_count, last_error: message });
 }
 
-export async function submitRecognition(env: Env, jobId: string): Promise<Response> {
+export async function submitRecognition(request: Request, env: Env, jobId: string): Promise<Response> {
   const current = await job(env, jobId);
   if (current.status !== "preparing" || !current.provider_upload_key) throw new HttpError(409, "Recognition audio is not ready to submit");
   const now = new Date().toISOString();
   try {
     const source = await recognitionFilename(env, current);
-    const submitted = await provider(env).submit(current.provider_upload_key, source.filename);
+    const sourceUrl = `${new URL(request.url).origin}/api/recognition-source/${current.provider_upload_key}`;
+    const submitted = await provider(env).submitUrl(sourceUrl, source.filename);
     await env.DB.batch([
       env.DB.prepare("UPDATE recognition_jobs SET status = 'submitted', poll_failure_count = 0, provider_job_id = ?, updated_at = ? WHERE id = ?").bind(submitted.providerJobId, now, jobId),
       env.DB.prepare("UPDATE recognition_attempts SET status = 'submitted' WHERE job_id = ? AND attempt_number = ?").bind(jobId, current.attempt_count),
@@ -187,6 +187,17 @@ export async function recognitionStatus(env: Env, mediaId: string): Promise<Resp
     }
   }
   return json(current);
+}
+
+export async function serveRecognitionSource(request: Request, env: Env, token: string): Promise<Response> {
+  if (!/^[a-f0-9]{64}$/.test(token)) throw new HttpError(404, "Recognition source not found");
+  const source = await env.DB.prepare(`
+    SELECT media_id FROM recognition_jobs
+    WHERE provider_upload_key = ? AND status IN ('preparing','submitted','processing')
+      AND updated_at >= datetime('now', '-1 day')
+  `).bind(token).first<{ media_id: string }>();
+  if (!source) throw new HttpError(404, "Recognition source not found");
+  return serveMedia(request, env, source.media_id);
 }
 
 export async function listSongMatches(env: Env): Promise<Response> {

@@ -3,7 +3,7 @@ import { authenticate, createSession } from "./auth";
 import { HttpError, json } from "./http";
 import { assignMedia, beginUpload, cancelUpload, completeUpload, configureUpload, listMedia, serveMedia, uploadPart } from "./media";
 import { createShow, listShows } from "./shows";
-import { addManualSongMatch, failRecognitionAttempt, listSongMatches, prepareRecognitionUpload, recognitionStatus, requestRecognition, reviewSongMatch, submitRecognition } from "./recognition";
+import { addManualSongMatch, failRecognitionAttempt, listSongMatches, prepareRecognitionUpload, recognitionStatus, requestRecognition, reviewSongMatch, serveRecognitionSource, submitRecognition } from "./recognition";
 
 export async function handle(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
@@ -11,6 +11,8 @@ export async function handle(request: Request, env: Env): Promise<Response> {
   const method = request.method.toUpperCase();
   if (path === "/api/health" && method === "GET") return json({ ok: true });
   if (path === "/api/session" && method === "POST") return createSession(request, env);
+  const recognitionSource = /^\/api\/recognition-source\/([a-f0-9]{64})$/.exec(path);
+  if (recognitionSource && method === "GET") return serveRecognitionSource(request, env, recognitionSource[1]);
   authenticate(request, env);
   if (path === "/api/session" && method === "GET") return json({ owner: true });
   if (path === "/api/shows" && method === "GET") return listShows(env);
@@ -35,7 +37,7 @@ export async function handle(request: Request, env: Env): Promise<Response> {
   match = /^\/api\/recognition\/([^/]+)\/upload$/.exec(path);
   if (match && method === "POST") return prepareRecognitionUpload(env, match[1]);
   match = /^\/api\/recognition\/([^/]+)\/submit$/.exec(path);
-  if (match && method === "POST") return submitRecognition(env, match[1]);
+  if (match && method === "POST") return submitRecognition(request, env, match[1]);
   match = /^\/api\/recognition\/([^/]+)\/fail$/.exec(path);
   if (match && method === "POST") return failRecognitionAttempt(env, match[1]);
   match = /^\/api\/song-matches\/([^/]+)$/.exec(path);

@@ -17,5 +17,6 @@ export type ProviderResult =
 export interface RecognitionProvider {
   prepareUpload(filename: string, contentType: string): Promise<{ url: string; key: string; headers: Record<string, string> }>;
   submit(key: string, filename: string): Promise<{ providerJobId: string }>;
+  submitUrl(url: string, filename: string): Promise<{ providerJobId: string }>;
   result(providerJobId: string): Promise<ProviderResult>;
 }

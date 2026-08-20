@@ -11,6 +11,10 @@ export class FakeRecognitionProvider implements RecognitionProvider {
     return { providerJobId: "fake-job" };
   }
 
+  async submitUrl() {
+    return { providerJobId: "fake-job" };
+  }
+
   async result(): Promise<ProviderResult> {
     return this.matches.length ? { state: "completed", matches: this.matches } : { state: "no_match" };
   }
