@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Music2, ScanSearch } from "lucide-react";
+import { AlertCircle, Music2, ScanSearch } from "lucide-react";
 import { api } from "../api";
 import { formatDuration } from "../mediaMetadata";
 import { recognizeStoredVideo } from "../recognition";
@@ -78,25 +78,35 @@ export default function SongMatches({ item, matches, onChanged, report }: { item
     }
   }
 
+  const visibleMatches = matches.filter(match => match.review_state !== "rejected");
   const mayRetry = job?.status === "failed" && job.attempt_count < 2;
+  const showManual = visibleMatches.length === 0 && !!job && ["failed", "no_match", "unsupported"].includes(job.status);
+  const recognitionNote = job?.status === "failed"
+    ? "Automatic recognition failed. The video is safe; you can retry or add its song manually."
+    : job?.status === "no_match"
+      ? "No song was recognized automatically."
+      : job?.status === "unsupported"
+        ? "Automatic recognition could not read this video's audio."
+        : null;
   return <div className="border-t border-ink/20 px-2.5 py-3">
     <div className="flex items-center justify-between gap-2">
-      <span className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide"><Music2 size={13}/>Song matches</span>
+      <span className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide"><Music2 size={13}/>{visibleMatches.length ? `${visibleMatches.length} song${visibleMatches.length === 1 ? "" : "s"}` : "Song recognition"}</span>
       <button className="text-[11px] font-bold underline disabled:opacity-40" disabled={working || (!!job && !terminal.has(job.status)) || (job?.status === "failed" && !mayRetry)} onClick={() => void recognize()}>
-        {mayRetry ? "Retry once" : job?.status === "budget_exhausted" ? "Check budget" : matches.length ? "Run again" : "Recognize"}
+        {mayRetry ? "Retry once" : visibleMatches.length ? "Run again" : job ? "Try again" : "Recognize"}
       </button>
     </div>
-    {(progress || job) && <p className="mt-2 text-[11px] text-ink/55">{progress || statusLabel(job!)}</p>}
-    <div className="mt-2 space-y-2">{matches.map(match => <div key={match.id} className="border-l-2 border-ember pl-2 text-xs">
+    {recognitionNote && <div className="mt-2 flex gap-1.5 border-l-2 border-ember bg-ember/5 p-2 text-[11px] leading-snug"><AlertCircle className="mt-0.5 shrink-0" size={13}/><span>{recognitionNote}</span></div>}
+    {(progress || (job && !recognitionNote)) && <p className="mt-2 text-[11px] text-ink/55">{progress || statusLabel(job!)}</p>}
+    <div className="mt-2 space-y-2">{visibleMatches.map(match => <div key={match.id} className="border-l-2 border-ember pl-2 text-xs">
       <div className="flex justify-between gap-2"><strong>{match.title}</strong><span className="shrink-0 text-ink/45">{formatDuration(match.start_ms)}</span></div>
       <div className="text-ink/55">{match.artist}{match.confidence !== null ? ` · ${Math.round(match.confidence)}%` : ""}</div>
       {match.review_state === "pending" && editing !== match.id && <div className="mt-1.5 flex gap-3 font-bold"><button className="underline" onClick={() => void review(match, "confirm")}>Confirm</button><button className="underline" onClick={() => setEditing(match.id)}>Edit</button><button className="underline" onClick={() => void review(match, "reject")}>Reject</button></div>}
       {editing === match.id && <EditMatch match={match} onSave={(title, artist) => void review(match, "edit", title, artist)} onCancel={() => setEditing(null)} />}
       {match.review_state !== "pending" && <small className="uppercase tracking-wide text-ink/45">{match.review_state}</small>}
     </div>)}</div>
-    <details className="mt-3 text-xs"><summary className="cursor-pointer font-bold"><ScanSearch className="mr-1 inline" size={13}/>Add missing song</summary>
+    {showManual && <details className="mt-3 text-xs"><summary className="cursor-pointer font-bold"><ScanSearch className="mr-1 inline" size={13}/>Add song manually</summary>
       <form className="mt-2 grid gap-2" onSubmit={event => void addManual(event)}><input required name="title" placeholder="Song title" aria-label="Song title"/><input required name="artist" placeholder="Primary Artist" aria-label="Primary Artist"/><input required min="0" step="1" name="startSeconds" type="number" placeholder="Start, seconds" aria-label="Start time in seconds"/><button className="button min-h-10" type="submit">Add Song</button></form>
-    </details>
+    </details>}
   </div>;
 }
 

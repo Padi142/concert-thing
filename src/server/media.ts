@@ -175,7 +175,7 @@ export async function serveMedia(request: Request, env: Env, mediaId: string): P
     "content-type": row.content_type,
     "content-length": String(range?.length ?? head.size),
     "accept-ranges": "bytes",
-    "cache-control": "private, no-store",
+    "cache-control": "private, max-age=3600",
     "etag": head.httpEtag,
     "content-disposition": `inline; filename*=UTF-8''${encodeURIComponent(row.original_name)}`
   });

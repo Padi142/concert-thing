@@ -47,10 +47,7 @@ The Worker HTTP interface is the seam between client and server. D1 and R2 bindi
 
 ACRCloud is isolated behind `RecognitionProvider`. After R2 upload completes, the Worker gives ACRCloud a temporary, unguessable download capability for the private original. ACRCloud pulls and processes the video asynchronously, so the browser can close after submission. Provider failure does not affect the private R2 original.
 
-Recognition is configured for the ACRCloud File Scanning container in `eu-west-1`, with a conservative limit of 10 new recognition jobs per month. To change providers or spending:
-
-1. Confirm ACRCloud File Scanning + Cover Song Identification pricing for the account.
-2. Adjust `ACRCLOUD_REGION` and `RECOGNITION_MONTHLY_LIMIT` in `wrangler.jsonc`.
+Recognition is configured for the ACRCloud File Scanning container in `eu-west-1`. There is no application-level monthly job limit; account billing and limits are managed in ACRCloud.
 3. Store credentials interactively; never put values in source or shell history:
 
    ```bash
@@ -65,7 +62,7 @@ Recognition is configured for the ACRCloud File Scanning container in `eu-west-1
    npm run deploy
    ```
 
-Jobs are idempotent, have one retry, and expose completed, no-match, unsupported, budget-exhausted, and failed states. Machine reruns update only pending candidates; confirmed, rejected, edited, and manual Owner decisions are never overwritten. See [`docs/research/music-recognition.md`](docs/research/music-recognition.md).
+Jobs are idempotent, have one retry, and expose completed, no-match, unsupported, and failed states. Machine reruns update only pending candidates; confirmed, rejected, edited, and manual Owner decisions are never overwritten. See [`docs/research/music-recognition.md`](docs/research/music-recognition.md).
 
 ## Commands
 

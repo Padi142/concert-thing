@@ -6,5 +6,4 @@ export interface Env {
   ACRCLOUD_ACCESS_TOKEN?: string;
   ACRCLOUD_CONTAINER_ID?: string;
   ACRCLOUD_REGION?: string;
-  RECOGNITION_MONTHLY_LIMIT?: string;
 }

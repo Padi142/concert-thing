@@ -14,7 +14,7 @@ The Owner chose:
 - pragmatic Song identity: title + primary Artist
 - one automatic retry (two attempts total)
 
-The deployed archive uses a conservative limit of 10 new recognition jobs per month. This is the hard spend control; upload and playback do not depend on recognition.
+The deployed archive does not impose an application-level monthly recognition limit. ACRCloud account billing and provider-side limits are the spend control; upload and playback do not depend on recognition.
 
 ## Provider comparison
 
@@ -26,7 +26,7 @@ The deployed archive uses a conservative limit of 10 new recognition jobs per mo
 | Short request limits | Identification samples must be below 5 MB and the docs recommend less than 15 seconds. | Standard accepts up to 10 MB and identifies a short excerpt. | Native SDK controls apply. |
 | Returned data | File results include score, offset, played duration, title, Artists, ACRID, ISRC/UPC and linked platform metadata when available. Cover results are returned separately. | Enterprise returns score, file offset, within-chunk offsets, title/Artist and identifiers depending on plan. | Native ShazamKit returns matched media items. |
 | Async support | File state is processing, ready, no-result, or error; polling and callbacks are documented. | Enterprise supports callbacks; streams support callbacks or long polling. | Native session callbacks. |
-| Price / hard controls | ACRCloud advertises a 14-day trial without a card, but public pages do not state a dependable File Scanning/Cover price; price must be confirmed in the console or quote. The archive therefore enforces its own monthly job cap. | Provider-published 2026 pricing says 300 free standard requests, then $5/1,000; long-file enterprise is custom. | Requires Apple developer setup and a native application; not comparable to an HTTP request price. |
+| Price / hard controls | ACRCloud advertises a 14-day trial without a card, but public pages do not state a dependable File Scanning/Cover price; price must be confirmed in the console or quote. The archive relies on account-level billing controls rather than imposing its own job cap. | Provider-published 2026 pricing says 300 free standard requests, then $5/1,000; long-file enterprise is custom. | Requires Apple developer setup and a native application; not comparable to an HTTP request price. |
 | Retention/privacy | Terms say uploaded audio/video is permanently removed after fingerprints are generated. Account/customer metadata and generated recognition records remain governed by the terms. | AudD says submitted audio is removed after processing and offers contractual enterprise assurances. | Governed by Apple developer terms/native SDK behavior. |
 
 ## Why File Scanning rather than short samples

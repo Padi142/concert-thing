@@ -19,8 +19,7 @@
   ],
   "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "concert-thing-media" }],
   "vars": {
-    "ACRCLOUD_REGION": "eu-west-1",
-    "RECOGNITION_MONTHLY_LIMIT": "10"
+    "ACRCLOUD_REGION": "eu-west-1"
   },
   "observability": { "enabled": true }
 }

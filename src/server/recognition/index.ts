@@ -74,16 +74,10 @@ export async function requestRecognition(request: Request, env: Env, mediaId: st
   if (existing && existing.status !== "failed" && !rerun) return json(existing);
   if (existing && existing.status === "failed" && existing.attempt_count >= 2 && !rerun) return json(existing);
 
-  const limit = Math.max(0, Number.parseInt(env.RECOGNITION_MONTHLY_LIMIT || "0", 10) || 0);
-  const usage = await env.DB.prepare(`
-    SELECT COUNT(*) AS count FROM recognition_jobs
-    WHERE provider = 'acrcloud' AND status != 'budget_exhausted'
-      AND created_at >= strftime('%Y-%m-01T00:00:00.000Z', 'now')
-  `).first<{ count: number }>();
   const now = new Date().toISOString();
   const retry = existing && existing.status === "failed" && !rerun;
   const id = retry ? existing.id : crypto.randomUUID();
-  const status = !retry && (usage?.count ?? 0) >= limit ? "budget_exhausted" : "preparing";
+  const status = "preparing";
   if (retry) {
     await env.DB.prepare("UPDATE recognition_jobs SET status = ?, poll_failure_count = 0, last_error = NULL, updated_at = ? WHERE id = ?").bind(status, now, id).run();
   } else {
