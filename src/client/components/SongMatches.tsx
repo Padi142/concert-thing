@@ -108,7 +108,7 @@ function EditMatch({ match, onSave, onCancel }: { match: SongMatch; onSave: (tit
 
 function statusLabel(job: Job) {
   const labels: Record<RecognitionStatus, string> = {
-    preparing: "Waiting for extracted audio", submitted: "Recognition submitted", processing: "Recognition in progress",
+    preparing: "Waiting to send video", submitted: "Recognition submitted", processing: "Recognition in progress",
     completed: "Recognition complete", no_match: "No songs matched", unsupported: "Unsupported audio",
     budget_exhausted: "Monthly recognition limit reached", failed: job.last_error || "Recognition failed",
   };

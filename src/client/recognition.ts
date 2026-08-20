@@ -11,8 +11,20 @@ async function recognitionJob(mediaId: string, rerun: boolean) {
   });
 }
 
-async function uploadOriginal(job: RecognitionJob, body: BodyInit, progress?: (message: string) => void) {
-  const prepared = await api<PreparedUpload>(`/api/recognition/${job.id}/upload`, { method: "POST" });
+let storedVideoQueue: Promise<void> = Promise.resolve();
+
+function serializeStoredVideo<T>(work: () => Promise<T>, progress?: (message: string) => void): Promise<T> {
+  progress?.("Queued for video transfer");
+  const result = storedVideoQueue.then(work, work);
+  storedVideoQueue = result.then(() => undefined, () => undefined);
+  return result;
+}
+
+async function prepareOriginal(job: RecognitionJob) {
+  return api<PreparedUpload>(`/api/recognition/${job.id}/upload`, { method: "POST" });
+}
+
+async function sendOriginal(job: RecognitionJob, prepared: PreparedUpload, body: BodyInit, progress?: (message: string) => void) {
   try {
     progress?.("Sending video for recognition");
     const response = await fetch(prepared.url, { method: "PUT", headers: prepared.headers, body });
@@ -22,6 +34,10 @@ async function uploadOriginal(job: RecognitionJob, body: BodyInit, progress?: (m
     await api(`/api/recognition/${job.id}/fail`, { method: "POST", body: JSON.stringify({}) }).catch(() => undefined);
     throw error;
   }
+}
+
+async function uploadOriginal(job: RecognitionJob, body: BodyInit, progress?: (message: string) => void) {
+  return sendOriginal(job, await prepareOriginal(job), body, progress);
 }
 
 async function recognizeAttempt(mediaId: string, body: BodyInit, progress?: (message: string) => void, rerun = false) {
@@ -39,18 +55,24 @@ export async function recognizeVideo(mediaId: string, file: File, progress?: (me
   }
 }
 
-export async function recognizeStoredVideo(mediaId: string, _originalName: string, _contentType: string, progress?: (message: string) => void, rerun = false) {
-  const job = await recognitionJob(mediaId, rerun);
-  if (job.status !== "preparing" && job.status !== "failed") return job;
-  progress?.("Reading private original");
-  const response = await fetch(`/api/media/${mediaId}/content`, { credentials: "same-origin" });
-  if (!response.ok) throw new Error("Private original could not be read");
-  const original = await response.blob();
-  try {
-    return await uploadOriginal(job, original, progress);
-  } catch {
-    progress?.("Retrying recognition once");
-    const retry = await recognitionJob(mediaId, false);
-    return uploadOriginal(retry, original, progress);
-  }
+export function recognizeStoredVideo(mediaId: string, _originalName: string, _contentType: string, progress?: (message: string) => void, rerun = false) {
+  return serializeStoredVideo(async () => {
+    const job = await recognitionJob(mediaId, rerun);
+    if (job.status !== "preparing" && job.status !== "failed") return job;
+    const prepared = await prepareOriginal(job);
+    progress?.("Reading private original");
+    const response = await fetch(`/api/media/${mediaId}/content`, { credentials: "same-origin" });
+    if (!response.ok) {
+      await api(`/api/recognition/${job.id}/fail`, { method: "POST", body: JSON.stringify({}) }).catch(() => undefined);
+      throw new Error("Private original could not be read");
+    }
+    const original = await response.blob();
+    try {
+      return await sendOriginal(job, prepared, original, progress);
+    } catch {
+      progress?.("Retrying recognition once");
+      const retry = await recognitionJob(mediaId, false);
+      return uploadOriginal(retry, original, progress);
+    }
+  }, progress);
 }
