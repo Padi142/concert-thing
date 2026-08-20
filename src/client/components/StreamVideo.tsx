@@ -3,6 +3,16 @@ import { api } from "../api";
 
 type StreamState = { status: string; iframeUrl?: string; error?: string | null };
 
+let importQueue: Promise<void> = Promise.resolve();
+
+function queueImport(mediaId: string): Promise<void> {
+  const importVideo = importQueue.then(async () => {
+    await api(`/api/media/${mediaId}/stream`, { method: "POST" });
+  });
+  importQueue = importVideo.catch(() => undefined);
+  return importVideo;
+}
+
 export default function StreamVideo({ mediaId, name, onDuration }: { mediaId: string; name: string; onDuration: (durationMs: number) => void }) {
   const [stream, setStream] = useState<StreamState | null>(null);
 
@@ -19,7 +29,7 @@ export default function StreamVideo({ mediaId, name, onDuration }: { mediaId: st
         if (!cancelled) timer = window.setTimeout(() => void check(), 10_000);
       }
     }
-    void api(`/api/media/${mediaId}/stream`, { method: "POST" }).then(check).catch(() => setStream({ status: "error" }));
+    void queueImport(mediaId).then(check).catch(() => setStream({ status: "error" }));
     return () => { cancelled = true; if (timer) window.clearTimeout(timer); };
   }, [mediaId]);
 
