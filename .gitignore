@@ -1,0 +1,6 @@
+node_modules/
+dist/
+.dev.vars
+.owner-token
+.wrangler/
+.DS_Store

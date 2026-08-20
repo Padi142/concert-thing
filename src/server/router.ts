@@ -1,0 +1,46 @@
+import type { Env } from "./env";
+import { authenticate, createSession } from "./auth";
+import { HttpError, json } from "./http";
+import { assignMedia, beginUpload, cancelUpload, completeUpload, configureUpload, listMedia, serveMedia, uploadPart } from "./media";
+import { createShow, listShows } from "./shows";
+import { addManualSongMatch, failRecognitionAttempt, listSongMatches, prepareRecognitionUpload, recognitionStatus, requestRecognition, reviewSongMatch, submitRecognition } from "./recognition";
+
+export async function handle(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const path = url.pathname;
+  const method = request.method.toUpperCase();
+  if (path === "/api/health" && method === "GET") return json({ ok: true });
+  if (path === "/api/session" && method === "POST") return createSession(request, env);
+  authenticate(request, env);
+  if (path === "/api/session" && method === "GET") return json({ owner: true });
+  if (path === "/api/shows" && method === "GET") return listShows(env);
+  if (path === "/api/shows" && method === "POST") return createShow(request, env);
+  if (path === "/api/media" && method === "GET") return listMedia(request, env);
+  if (path === "/api/song-matches" && method === "GET") return listSongMatches(env);
+  if (path === "/api/uploads" && method === "POST") return beginUpload(request, env);
+  let match = /^\/api\/uploads\/([^/]+)$/.exec(path);
+  if (match && method === "PATCH") return configureUpload(request, env, match[1]);
+  if (match && method === "DELETE") return cancelUpload(env, match[1]);
+  match = /^\/api\/uploads\/([^/]+)\/parts\/(\d+)$/.exec(path);
+  if (match && method === "PUT") return uploadPart(request, env, match[1], Number(match[2]));
+  match = /^\/api\/uploads\/([^/]+)\/complete$/.exec(path);
+  if (match && method === "POST") return completeUpload(request, env, match[1]);
+  match = /^\/api\/media\/([^/]+)\/assignment$/.exec(path);
+  if (match && method === "PATCH") return assignMedia(request, env, match[1]);
+  match = /^\/api\/media\/([^/]+)\/recognition$/.exec(path);
+  if (match && method === "POST") return requestRecognition(request, env, match[1]);
+  if (match && method === "GET") return recognitionStatus(env, match[1]);
+  match = /^\/api\/media\/([^/]+)\/song-matches$/.exec(path);
+  if (match && method === "POST") return addManualSongMatch(request, env, match[1]);
+  match = /^\/api\/recognition\/([^/]+)\/upload$/.exec(path);
+  if (match && method === "POST") return prepareRecognitionUpload(env, match[1]);
+  match = /^\/api\/recognition\/([^/]+)\/submit$/.exec(path);
+  if (match && method === "POST") return submitRecognition(env, match[1]);
+  match = /^\/api\/recognition\/([^/]+)\/fail$/.exec(path);
+  if (match && method === "POST") return failRecognitionAttempt(env, match[1]);
+  match = /^\/api\/song-matches\/([^/]+)$/.exec(path);
+  if (match && method === "PATCH") return reviewSongMatch(request, env, match[1]);
+  match = /^\/api\/media\/([^/]+)\/content$/.exec(path);
+  if (match && method === "GET") return serveMedia(request, env, match[1]);
+  throw new HttpError(404, "Not found");
+}

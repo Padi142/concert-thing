@@ -1,0 +1,35 @@
+{
+  "name": "concert-thing",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "test:upload": "esbuild test/upload-state.test.ts --bundle --platform=node --format=esm --outfile=.upload-state-test.mjs >/dev/null && node .upload-state-test.mjs && rm .upload-state-test.mjs",
+    "test:recognition": "for test in recognition-provider recognition-state; do esbuild test/$test.test.ts --bundle --platform=node --format=esm --outfile=.$test-test.mjs >/dev/null && node .$test-test.mjs && rm .$test-test.mjs || exit 1; done",
+    "test": "npm run test:upload && npm run test:recognition",
+    "check": "npm test && tsc --noEmit && vite build",
+    "deploy": "npm run check && wrangler deploy",
+    "termux:shim": "node scripts/termux-wrangler-shim.mjs"
+  },
+  "dependencies": {
+    "@ffmpeg/core": "^0.12.10",
+    "@ffmpeg/ffmpeg": "^0.12.15",
+    "@ffmpeg/util": "^0.12.2",
+    "@vitejs/plugin-react": "latest",
+    "lucide-react": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "vite": "latest"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "autoprefixer": "latest",
+    "postcss": "latest",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.9.2",
+    "wrangler": "latest"
+  }
+}
