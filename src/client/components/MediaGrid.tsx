@@ -4,6 +4,7 @@ import { api } from "../api";
 import { formatDuration } from "../mediaMetadata";
 import type { MediaItem, Report, Show, SongMatch } from "../types";
 import SongMatches from "./SongMatches";
+import StreamVideo from "./StreamVideo";
 
 type Props = {
   items: MediaItem[];
@@ -37,7 +38,7 @@ function MediaCard({ item, shows, matches, onChanged, report }: Props & { item: 
   return <article className="media-tile">
     {item.media_type === "photo"
       ? <img className="aspect-square w-full bg-ink object-cover" loading="lazy" src={`/api/media/${item.id}/content`} alt={item.original_name}/>
-      : <video className="aspect-square w-full bg-ink object-cover" controls playsInline preload="none" src={`/api/media/${item.id}/content`} onLoadedMetadata={event => setMeasuredDuration(Math.round(event.currentTarget.duration * 1000))}/>}
+      : <StreamVideo mediaId={item.id} name={item.original_name} onDuration={setMeasuredDuration}/>}
     <div className="p-2.5">
       <div className="flex min-w-0 items-center gap-1.5">
         {item.media_type === "video" ? <Video className="shrink-0" size={14}/> : <ImagePlus className="shrink-0" size={14}/>}

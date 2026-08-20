@@ -4,7 +4,7 @@ import { DatabaseSync } from "node:sqlite";
 import { CANDIDATE_UPSERT_SQL } from "../src/server/recognition";
 
 const database = new DatabaseSync(":memory:");
-for (const migration of ["0001_initial.sql", "0002_assignment_provenance.sql", "0003_song_recognition.sql"]) {
+for (const migration of ["0001_initial.sql", "0002_assignment_provenance.sql", "0003_song_recognition.sql", "0004_stream_video.sql"]) {
   database.exec(readFileSync(`migrations/${migration}`, "utf8"));
 }
 database.prepare(`INSERT INTO media_items (id,object_key,original_name,media_type,content_type,byte_size,status,created_at)

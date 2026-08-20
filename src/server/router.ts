@@ -1,7 +1,7 @@
 import type { Env } from "./env";
 import { authenticate, createSession } from "./auth";
 import { HttpError, json } from "./http";
-import { assignMedia, beginUpload, cancelUpload, completeUpload, configureUpload, listMedia, serveMedia, uploadPart } from "./media";
+import { assignMedia, beginUpload, cancelUpload, completeUpload, configureUpload, importMediaToStream, listMedia, serveMedia, serveStreamSource, streamPlayback, uploadPart } from "./media";
 import { createShow, listShows } from "./shows";
 import { addManualSongMatch, failRecognitionAttempt, listSongMatches, prepareRecognitionUpload, recognitionStatus, requestRecognition, reviewSongMatch, serveRecognitionSource, submitRecognition } from "./recognition";
 
@@ -13,6 +13,8 @@ export async function handle(request: Request, env: Env): Promise<Response> {
   if (path === "/api/session" && method === "POST") return createSession(request, env);
   const recognitionSource = /^\/api\/recognition-source\/([a-f0-9]{64})$/.exec(path);
   if (recognitionSource && method === "GET") return serveRecognitionSource(request, env, recognitionSource[1]);
+  const streamSource = /^\/api\/stream-source\/([a-f0-9]{64})$/.exec(path);
+  if (streamSource && (method === "GET" || method === "HEAD")) return serveStreamSource(request, env, streamSource[1]);
   authenticate(request, env);
   if (path === "/api/session" && method === "GET") return json({ owner: true });
   if (path === "/api/shows" && method === "GET") return listShows(env);
@@ -29,6 +31,9 @@ export async function handle(request: Request, env: Env): Promise<Response> {
   if (match && method === "POST") return completeUpload(request, env, match[1]);
   match = /^\/api\/media\/([^/]+)\/assignment$/.exec(path);
   if (match && method === "PATCH") return assignMedia(request, env, match[1]);
+  match = /^\/api\/media\/([^/]+)\/stream$/.exec(path);
+  if (match && method === "POST") return importMediaToStream(request, env, match[1]);
+  if (match && method === "GET") return streamPlayback(env, match[1]);
   match = /^\/api\/media\/([^/]+)\/recognition$/.exec(path);
   if (match && method === "POST") return requestRecognition(request, env, match[1]);
   if (match && method === "GET") return recognitionStatus(env, match[1]);
@@ -43,6 +48,6 @@ export async function handle(request: Request, env: Env): Promise<Response> {
   match = /^\/api\/song-matches\/([^/]+)$/.exec(path);
   if (match && method === "PATCH") return reviewSongMatch(request, env, match[1]);
   match = /^\/api\/media\/([^/]+)\/content$/.exec(path);
-  if (match && method === "GET") return serveMedia(request, env, match[1]);
+  if (match && (method === "GET" || method === "HEAD")) return serveMedia(request, env, match[1]);
   throw new HttpError(404, "Not found");
 }

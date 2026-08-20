@@ -18,6 +18,7 @@
     }
   ],
   "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "concert-thing-media" }],
+  "stream": { "binding": "STREAM" },
   "vars": {
     "ACRCLOUD_REGION": "eu-west-1"
   },

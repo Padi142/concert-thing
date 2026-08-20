@@ -169,8 +169,8 @@ export async function serveMedia(request: Request, env: Env, mediaId: string): P
   const head = await env.MEDIA.head(row.object_key);
   if (!head) throw new HttpError(404, "Original media is missing");
   const range = parseRange(request.headers.get("range"), head.size);
-  const object = await env.MEDIA.get(row.object_key, range ? { range } : undefined);
-  if (!object) throw new HttpError(404, "Original media is missing");
+  const object = request.method === "HEAD" ? null : await env.MEDIA.get(row.object_key, range ? { range } : undefined);
+  if (request.method !== "HEAD" && !object) throw new HttpError(404, "Original media is missing");
   const headers = new Headers({
     "content-type": row.content_type,
     "content-length": String(range?.length ?? head.size),
@@ -180,5 +180,70 @@ export async function serveMedia(request: Request, env: Env, mediaId: string): P
     "content-disposition": `inline; filename*=UTF-8''${encodeURIComponent(row.original_name)}`
   });
   if (range) headers.set("content-range", `bytes ${range.offset}-${range.offset + range.length - 1}/${head.size}`);
-  return new Response(object.body, { status: range ? 206 : 200, headers });
+  return new Response(object?.body ?? null, { status: range ? 206 : 200, headers });
+}
+
+function streamSourceToken(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  return [...bytes].map(byte => byte.toString(16).padStart(2, "0")).join("");
+}
+
+export async function importMediaToStream(request: Request, env: Env, mediaId: string): Promise<Response> {
+  const media = await env.DB.prepare(`
+    SELECT id,original_name,media_type,stream_uid,stream_status FROM media_items
+    WHERE id = ? AND status = 'ready'
+  `).bind(mediaId).first<{ id: string; original_name: string; media_type: string; stream_uid: string | null; stream_status: string | null }>();
+  if (!media || media.media_type !== "video") throw new HttpError(404, "Ready video not found");
+  if (media.stream_uid || media.stream_status === "importing") return json({ id: mediaId, streamStatus: media.stream_status || "processing" });
+
+  const token = streamSourceToken();
+  const now = new Date().toISOString();
+  await env.DB.prepare("UPDATE media_items SET stream_status = 'importing', stream_source_token = ?, stream_error = NULL WHERE id = ? AND stream_uid IS NULL")
+    .bind(token, mediaId).run();
+  try {
+    const sourceUrl = `${new URL(request.url).origin}/api/stream-source/${token}`;
+    const video = await env.STREAM.upload(sourceUrl, {
+      meta: { mediaId, name: media.original_name },
+      requireSignedURLs: true,
+    });
+    const status = video.readyToStream ? "ready" : video.status.state;
+    await env.DB.prepare("UPDATE media_items SET stream_uid = ?, stream_status = ?, stream_error = NULL WHERE id = ?")
+      .bind(video.id, status, mediaId).run();
+    return json({ id: mediaId, streamStatus: status }, 202);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Cloudflare Stream import failed";
+    await env.DB.prepare("UPDATE media_items SET stream_status = 'error', stream_error = ?, stream_source_token = NULL WHERE id = ?")
+      .bind(message, mediaId).run();
+    throw new HttpError(502, message);
+  }
+}
+
+export async function streamPlayback(env: Env, mediaId: string): Promise<Response> {
+  const media = await env.DB.prepare("SELECT stream_uid,stream_status,stream_error FROM media_items WHERE id = ? AND media_type = 'video' AND status = 'ready'")
+    .bind(mediaId).first<{ stream_uid: string | null; stream_status: string | null; stream_error: string | null }>();
+  if (!media) throw new HttpError(404, "Ready video not found");
+  if (!media.stream_uid) return json({ status: media.stream_status || "not_started", error: media.stream_error }, 202);
+  try {
+    const handle = env.STREAM.video(media.stream_uid);
+    const details = await handle.details();
+    const status = details.readyToStream ? "ready" : details.status.state;
+    const error = details.status.errorReasonText || null;
+    await env.DB.prepare("UPDATE media_items SET stream_status = ?, stream_error = ?, stream_source_token = CASE WHEN ? = 'ready' THEN NULL ELSE stream_source_token END WHERE id = ?")
+      .bind(status, error, status, mediaId).run();
+    if (!details.readyToStream || !details.preview) return json({ status, error }, 202);
+    const token = await handle.generateToken();
+    return json({ status: "ready", iframeUrl: `${new URL(details.preview).origin}/${token}/iframe` });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Cloudflare Stream is unavailable";
+    return json({ status: "error", error: message }, 502);
+  }
+}
+
+export async function serveStreamSource(request: Request, env: Env, token: string): Promise<Response> {
+  if (!/^[a-f0-9]{64}$/.test(token)) throw new HttpError(404, "Stream source not found");
+  const source = await env.DB.prepare(`
+    SELECT id FROM media_items WHERE stream_source_token = ? AND stream_status NOT IN ('ready','error')
+  `).bind(token).first<{ id: string }>();
+  if (!source) throw new HttpError(404, "Stream source not found");
+  return serveMedia(request, env, source.id);
 }
