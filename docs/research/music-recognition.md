@@ -4,12 +4,12 @@ Researched 2026-08-20 from provider and platform primary sources. Provider accur
 
 ## Decision
 
-Use **ACRCloud File Scanning**, with a provider-neutral recognition interface. Recognition runs automatically for newly uploaded videos. The browser extracts the whole audio stream to mono 16 kHz/64 kbps M4A, obtains a provider presigned upload through the Worker, and sends only that audio to ACRCloud. ACRCloud performs its own asynchronous traversal; the Worker polls and persists results. No original video is sent to the provider.
+Use **ACRCloud File Scanning**, with a provider-neutral recognition interface. Recognition runs automatically for newly uploaded videos. The browser obtains a provider presigned upload through the Worker and sends the original video directly to ACRCloud. ACRCloud performs its own asynchronous traversal; the Worker polls and persists results.
 
 The Owner chose:
 
 - automatic recognition after every video upload
-- whole-audio browser extraction rather than sending the original video
+- direct original-video upload to avoid browser FFmpeg overhead
 - confirm, reject, edit, and manual-add review actions
 - pragmatic Song identity: title + primary Artist
 - one automatic retry (two attempts total)
@@ -31,13 +31,13 @@ The monthly recognition limit defaults to zero until the Owner verifies ACRCloud
 
 ## Why File Scanning rather than short samples
 
-One concert video can contain multiple Songs. A sequence of short-window Identification calls would require choosing a sampling interval, can miss short songs and transitions, and makes request count proportional to duration. File Scanning's traversal is the provider surface intended for multiple results across one file. The browser-side extraction satisfies the Owner's audio-only approval and avoids assuming FFmpeg exists in a Worker.
+One concert video can contain multiple Songs. A sequence of short-window Identification calls would require choosing a sampling interval, can miss short songs and transitions, and makes request count proportional to duration. File Scanning's traversal is the provider surface intended for multiple results across one file.
 
-The trade-off is a lazy-loaded ~32 MB FFmpeg WebAssembly core and significant browser CPU/memory. Extraction is serialized to avoid running two FFmpeg instances at once. Existing videos can be recognized by downloading the private original back to the authenticated browser, extracting audio locally, and sending only the result. Upload remains complete and playable when extraction or recognition fails.
+Direct video upload avoids a 32 MB FFmpeg WebAssembly runtime and substantial browser CPU/memory use. The trade-off is that ACRCloud temporarily receives the full original video rather than audio alone. Existing videos are streamed from the authenticated private content endpoint to the provider upload. The R2 upload remains complete and playable when recognition fails.
 
 ## Async/orchestration choice
 
-ACRCloud File Scanning is already an asynchronous durable job. D1 stores local jobs and attempts; the client polls status, and provider candidate upserts are idempotent. A Cloudflare Queue or Workflow would not solve browser-only audio extraction and would add a provisioned resource. Cloudflare recommends Queues for simple single-step background work and Workflows for durable multi-step execution; either can be added later if extraction moves to a server-side media processor. [Workers best practices](https://developers.cloudflare.com/workers/best-practices/workers-best-practices/), [Queues limits](https://developers.cloudflare.com/queues/platform/limits/), [Workflows limits](https://developers.cloudflare.com/workflows/reference/limits/)
+ACRCloud File Scanning is already an asynchronous durable job. D1 stores local jobs and attempts; the client polls status, and provider candidate upserts are idempotent. A Cloudflare Queue or Workflow would add a provisioned resource without improving this direct provider upload flow. Cloudflare recommends Queues for simple single-step background work and Workflows for durable multi-step execution; either can be added later if extraction moves to a server-side media processor. [Workers best practices](https://developers.cloudflare.com/workers/best-practices/workers-best-practices/), [Queues limits](https://developers.cloudflare.com/queues/platform/limits/), [Workflows limits](https://developers.cloudflare.com/workflows/reference/limits/)
 
 ## Primary sources
 

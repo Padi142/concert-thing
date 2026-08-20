@@ -44,6 +44,13 @@ function provider(env: Env): RecognitionProvider {
   });
 }
 
+async function recognitionFilename(env: Env, current: JobRow): Promise<{ filename: string; contentType: string }> {
+  const media = await env.DB.prepare("SELECT original_name,content_type FROM media_items WHERE id = ?").bind(current.media_id).first<{ original_name: string; content_type: string }>();
+  if (!media) throw new HttpError(404, "Media Item not found");
+  const extension = /\.[a-zA-Z0-9]{1,10}$/.exec(media.original_name)?.[0] ?? ".mp4";
+  return { filename: `${current.id}${extension.toLowerCase()}`, contentType: media.content_type };
+}
+
 async function job(env: Env, id: string): Promise<JobRow> {
   const row = await env.DB.prepare(`
     SELECT id,media_id,status,attempt_count,poll_failure_count,provider_job_id,provider_upload_key,last_error,updated_at
@@ -95,7 +102,8 @@ export async function prepareRecognitionUpload(env: Env, jobId: string): Promise
   const attemptNumber = current.attempt_count + 1;
   const now = new Date().toISOString();
   try {
-    const upload = await provider(env).prepareUpload(`${current.id}.m4a`, "audio/mp4");
+    const source = await recognitionFilename(env, current);
+    const upload = await provider(env).prepareUpload(source.filename, source.contentType);
     await env.DB.batch([
       env.DB.prepare("UPDATE recognition_jobs SET attempt_count = ?, provider_upload_key = ?, status = 'preparing', last_error = NULL, updated_at = ? WHERE id = ?").bind(attemptNumber, upload.key, now, jobId),
       env.DB.prepare("INSERT INTO recognition_attempts (id,job_id,attempt_number,status,created_at) VALUES (?,?,?,'started',?)").bind(crypto.randomUUID(), jobId, attemptNumber, now),
@@ -124,7 +132,8 @@ export async function submitRecognition(env: Env, jobId: string): Promise<Respon
   if (current.status !== "preparing" || !current.provider_upload_key) throw new HttpError(409, "Recognition audio is not ready to submit");
   const now = new Date().toISOString();
   try {
-    const submitted = await provider(env).submit(current.provider_upload_key, `${current.id}.m4a`);
+    const source = await recognitionFilename(env, current);
+    const submitted = await provider(env).submit(current.provider_upload_key, source.filename);
     await env.DB.batch([
       env.DB.prepare("UPDATE recognition_jobs SET status = 'submitted', poll_failure_count = 0, provider_job_id = ?, updated_at = ? WHERE id = ?").bind(submitted.providerJobId, now, jobId),
       env.DB.prepare("UPDATE recognition_attempts SET status = 'submitted' WHERE job_id = ? AND attempt_number = ?").bind(jobId, current.attempt_count),

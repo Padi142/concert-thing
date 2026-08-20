@@ -14,7 +14,7 @@ A private, single-Owner archive for concert photos and videos, deployed on Cloud
 - Private photo display and range-aware video playback
 - Responsive React + Tailwind interface and installable web manifest
 - Video duration in the Inbox and Library
-- Automatic, asynchronous ACRCloud Song recognition using browser-extracted audio
+- Automatic, asynchronous ACRCloud Song recognition using private direct video uploads
 - Timestamped Song Match review: confirm, reject, edit, or manually add
 - Library search by confirmed Song title or primary Artist
 
@@ -28,7 +28,7 @@ Automatic Assignment occurs only when a media timestamp falls within exactly one
 src/client/               React interface
   api.ts                  HTTP adapter used by all features
   components/             Login, Show, upload, media, and Song Match modules
-  recognition.ts          Lazy browser audio extraction and provider upload
+  recognition.ts          Direct provider upload and retry orchestration
   Archive.tsx             Library composition, Song search, and data refresh
 src/server/               Worker implementation
   router.ts               HTTP interface and route dispatch
@@ -45,7 +45,7 @@ The Worker HTTP interface is the seam between client and server. D1 and R2 bindi
 
 ## Song recognition
 
-ACRCloud is isolated behind `RecognitionProvider`. The original video remains private: after upload, the browser lazily loads FFmpeg WebAssembly, extracts mono M4A audio, and uploads that audio through an ACRCloud presigned URL. Recognition runs independently of upload completion and playback.
+ACRCloud is isolated behind `RecognitionProvider`. After R2 upload completes, the authenticated browser sends the original video directly through an ACRCloud presigned URL. Recognition runs independently of upload completion and playback; provider failure does not affect the private R2 original.
 
 The committed `RECOGNITION_MONTHLY_LIMIT` is `0`, so recognition initially ends in the visible **budget exhausted** state. Before enabling it:
 
