@@ -10,6 +10,7 @@ export interface StreamBindingService {
   video(id: string): {
     details(): Promise<StreamVideo>;
     generateToken(): Promise<string>;
+    delete(): Promise<void>;
   };
 }
 
@@ -18,7 +19,10 @@ export interface Env {
   MEDIA: R2Bucket;
   STREAM: StreamBindingService;
   ASSETS: Fetcher;
-  OWNER_TOKEN: string;
+  /** Clerk's public JWT verification key (PEM). Keep this as a Wrangler secret. */
+  CLERK_JWT_KEY?: string;
+  /** Optional comma-separated origins/parties accepted in Clerk azp claims. */
+  CLERK_AUTHORIZED_PARTIES?: string;
   ACRCLOUD_ACCESS_TOKEN?: string;
   ACRCLOUD_CONTAINER_ID?: string;
   ACRCLOUD_REGION?: string;

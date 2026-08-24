@@ -1,6 +1,16 @@
 node_modules/
 dist/
 .dev.vars
+.env.local
+.env.*.local
 .owner-token
 .wrangler/
+.expo/
+.hallmark/
+mobile/android/
+mobile/ios/
+mobile/builds/
+mobile/modules/**/android/build/
+mobile/modules/**/android/.gradle/
+mobile/modules/**/android/.cxx/
 .DS_Store

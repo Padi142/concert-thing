@@ -1,4 +1,5 @@
 import type { Env } from "../env";
+import type { AuthContext } from "../auth";
 import { body, HttpError, json, text } from "../http";
 import { serveMedia } from "../media";
 import { AcrCloudProvider } from "./acrcloud";
@@ -45,24 +46,25 @@ function provider(env: Env): RecognitionProvider {
   });
 }
 
-async function recognitionFilename(env: Env, current: JobRow): Promise<{ filename: string; contentType: string }> {
-  const media = await env.DB.prepare("SELECT original_name,content_type FROM media_items WHERE id = ?").bind(current.media_id).first<{ original_name: string; content_type: string }>();
+async function recognitionFilename(env: Env, current: JobRow, auth: AuthContext): Promise<{ filename: string; contentType: string }> {
+  const media = await env.DB.prepare("SELECT original_name,content_type FROM media_items WHERE id = ? AND owner_id = ?").bind(current.media_id, auth.userId).first<{ original_name: string; content_type: string }>();
   if (!media) throw new HttpError(404, "Media Item not found");
   const extension = /\.[a-zA-Z0-9]{1,10}$/.exec(media.original_name)?.[0] ?? ".mp4";
   return { filename: `${current.id}${extension.toLowerCase()}`, contentType: media.content_type };
 }
 
-async function job(env: Env, id: string): Promise<JobRow> {
+async function job(env: Env, id: string, auth: AuthContext): Promise<JobRow> {
   const row = await env.DB.prepare(`
-    SELECT id,media_id,status,attempt_count,poll_failure_count,provider_job_id,provider_upload_key,last_error,updated_at
-    FROM recognition_jobs WHERE id = ?
-  `).bind(id).first<JobRow>();
+    SELECT j.id,j.media_id,j.status,j.attempt_count,j.poll_failure_count,j.provider_job_id,j.provider_upload_key,j.last_error,j.updated_at
+    FROM recognition_jobs j JOIN media_items m ON m.id = j.media_id
+    WHERE j.id = ? AND m.owner_id = ?
+  `).bind(id, auth.userId).first<JobRow>();
   if (!row) throw new HttpError(404, "Recognition job not found");
   return row;
 }
 
-export async function requestRecognition(request: Request, env: Env, mediaId: string): Promise<Response> {
-  const media = await env.DB.prepare("SELECT id,media_type,status FROM media_items WHERE id = ?").bind(mediaId).first<{ media_type: string; status: string }>();
+export async function requestRecognition(request: Request, env: Env, mediaId: string, auth: AuthContext): Promise<Response> {
+  const media = await env.DB.prepare("SELECT id,media_type,status FROM media_items WHERE id = ? AND owner_id = ?").bind(mediaId, auth.userId).first<{ media_type: string; status: string }>();
   if (!media || media.status !== "ready") throw new HttpError(404, "Ready Media Item not found");
   if (media.media_type !== "video") throw new HttpError(415, "Only videos can be recognized");
   const input = await body(request);
@@ -94,8 +96,8 @@ function sourceToken(): string {
   return [...bytes].map(byte => byte.toString(16).padStart(2, "0")).join("");
 }
 
-export async function prepareRecognitionUpload(env: Env, jobId: string): Promise<Response> {
-  const current = await job(env, jobId);
+export async function prepareRecognitionUpload(env: Env, jobId: string, auth: AuthContext): Promise<Response> {
+  const current = await job(env, jobId, auth);
   if (current.status === "budget_exhausted") return json(current);
   if (current.status !== "preparing" && current.status !== "failed") throw new HttpError(409, "Recognition is not waiting for audio");
   if (current.attempt_count >= 2) throw new HttpError(409, "Recognition retry limit reached");
@@ -109,8 +111,8 @@ export async function prepareRecognitionUpload(env: Env, jobId: string): Promise
   return json({ jobId });
 }
 
-export async function failRecognitionAttempt(env: Env, jobId: string): Promise<Response> {
-  const current = await job(env, jobId);
+export async function failRecognitionAttempt(env: Env, jobId: string, auth: AuthContext): Promise<Response> {
+  const current = await job(env, jobId, auth);
   if (current.status !== "preparing") return json(current);
   const message = "Audio extraction or transfer failed";
   await env.DB.batch([
@@ -120,12 +122,12 @@ export async function failRecognitionAttempt(env: Env, jobId: string): Promise<R
   return json({ id: jobId, status: "failed", attempt_count: current.attempt_count, last_error: message });
 }
 
-export async function submitRecognition(request: Request, env: Env, jobId: string): Promise<Response> {
-  const current = await job(env, jobId);
+export async function submitRecognition(request: Request, env: Env, jobId: string, auth: AuthContext): Promise<Response> {
+  const current = await job(env, jobId, auth);
   if (current.status !== "preparing" || !current.provider_upload_key) throw new HttpError(409, "Recognition audio is not ready to submit");
   const now = new Date().toISOString();
   try {
-    const source = await recognitionFilename(env, current);
+    const source = await recognitionFilename(env, current, auth);
     const sourceUrl = `${new URL(request.url).origin}/api/recognition-source/${current.provider_upload_key}`;
     const submitted = await provider(env).submitUrl(sourceUrl, source.filename);
     await env.DB.batch([
@@ -143,18 +145,19 @@ export async function submitRecognition(request: Request, env: Env, jobId: strin
   }
 }
 
-async function saveMatches(env: Env, current: JobRow, matches: ProviderMatch[]) {
+async function saveMatches(env: Env, current: JobRow, matches: ProviderMatch[], _auth: AuthContext) {
   const now = new Date().toISOString();
   const statements = matches.map(match => env.DB.prepare(CANDIDATE_UPSERT_SQL).bind(crypto.randomUUID(), current.media_id, current.id, match.providerMatchId, match.startMs, match.endMs,
     match.confidence, match.title, match.artist, JSON.stringify(match.externalIds), now, now));
   if (statements.length) await env.DB.batch(statements);
 }
 
-export async function recognitionStatus(env: Env, mediaId: string): Promise<Response> {
+export async function recognitionStatus(env: Env, mediaId: string, auth: AuthContext): Promise<Response> {
   let current = await env.DB.prepare(`
-    SELECT id,media_id,status,attempt_count,poll_failure_count,provider_job_id,provider_upload_key,last_error,updated_at
-    FROM recognition_jobs WHERE media_id = ? AND provider = 'acrcloud' ORDER BY created_at DESC LIMIT 1
-  `).bind(mediaId).first<JobRow>();
+    SELECT j.id,j.media_id,j.status,j.attempt_count,j.poll_failure_count,j.provider_job_id,j.provider_upload_key,j.last_error,j.updated_at
+    FROM recognition_jobs j JOIN media_items m ON m.id = j.media_id
+    WHERE j.media_id = ? AND m.owner_id = ? AND j.provider = 'acrcloud' ORDER BY j.created_at DESC LIMIT 1
+  `).bind(mediaId, auth.userId).first<JobRow>();
   if (!current) throw new HttpError(404, "Recognition job not found");
   if (current.status === "preparing" && Date.now() - Date.parse(current.updated_at) > 60 * 60 * 1000) {
     const lastError = "Audio preparation did not finish";
@@ -166,7 +169,7 @@ export async function recognitionStatus(env: Env, mediaId: string): Promise<Resp
     try {
       const result = await provider(env).result(current.provider_job_id);
       const now = new Date().toISOString();
-      if (result.state === "completed") await saveMatches(env, current, result.matches);
+      if (result.state === "completed") await saveMatches(env, current, result.matches, auth);
       const lastError = "message" in result ? result.message : null;
       await env.DB.prepare("UPDATE recognition_jobs SET status = ?, poll_failure_count = 0, last_error = ?, updated_at = ? WHERE id = ?")
         .bind(result.state, lastError, now, current.id).run();
@@ -186,23 +189,26 @@ export async function recognitionStatus(env: Env, mediaId: string): Promise<Resp
 export async function serveRecognitionSource(request: Request, env: Env, token: string): Promise<Response> {
   if (!/^[a-f0-9]{64}$/.test(token)) throw new HttpError(404, "Recognition source not found");
   const source = await env.DB.prepare(`
-    SELECT media_id FROM recognition_jobs
-    WHERE provider_upload_key = ? AND status IN ('preparing','submitted','processing')
-      AND updated_at >= datetime('now', '-1 day')
+    SELECT j.media_id FROM recognition_jobs j
+    JOIN media_items m ON m.id = j.media_id
+    WHERE j.provider_upload_key = ? AND j.status IN ('preparing','submitted','processing')
+      AND j.updated_at >= datetime('now', '-1 day')
   `).bind(token).first<{ media_id: string }>();
   if (!source) throw new HttpError(404, "Recognition source not found");
   return serveMedia(request, env, source.media_id);
 }
 
-export async function listSongMatches(env: Env): Promise<Response> {
+export async function listSongMatches(env: Env, auth: AuthContext): Promise<Response> {
   const result = await env.DB.prepare(`
     SELECT sm.id,sm.media_id,sm.start_ms,sm.end_ms,sm.confidence,sm.candidate_title,
       sm.candidate_artist,sm.review_state,sm.song_id,
       COALESCE(sm.owner_title,s.title,sm.candidate_title) AS title,
       COALESCE(sm.owner_artist,s.primary_artist,sm.candidate_artist) AS artist
-    FROM song_matches sm LEFT JOIN songs s ON s.id = sm.song_id
+    FROM song_matches sm
+    JOIN media_items m ON m.id = sm.media_id AND m.owner_id = ?
+    LEFT JOIN songs s ON s.id = sm.song_id
     ORDER BY sm.media_id, sm.start_ms
-  `).all();
+  `).bind(auth.userId).all();
   return json(result.results);
 }
 
@@ -223,14 +229,18 @@ async function songId(env: Env, title: string, artist: string): Promise<string> 
   return (await env.DB.prepare("SELECT id FROM songs WHERE normalized_title = ? AND normalized_artist = ?").bind(titleKey, artistKey).first<{ id: string }>())!.id;
 }
 
-export async function reviewSongMatch(request: Request, env: Env, matchId: string): Promise<Response> {
+export async function reviewSongMatch(request: Request, env: Env, matchId: string, auth: AuthContext): Promise<Response> {
   const input = await body(request);
   const action = text(input.action, "action");
-  const match = await env.DB.prepare("SELECT id,media_id,candidate_title,candidate_artist,review_state FROM song_matches WHERE id = ?").bind(matchId).first<MatchRow>();
+  const match = await env.DB.prepare(`
+    SELECT sm.id,sm.media_id,sm.candidate_title,sm.candidate_artist,sm.review_state
+    FROM song_matches sm JOIN media_items m ON m.id = sm.media_id
+    WHERE sm.id = ? AND m.owner_id = ?
+  `).bind(matchId, auth.userId).first<MatchRow>();
   if (!match) throw new HttpError(404, "Song Match not found");
   const now = new Date().toISOString();
   if (action === "reject") {
-    await env.DB.prepare("UPDATE song_matches SET review_state = 'rejected', song_id = NULL, owner_title = NULL, owner_artist = NULL, updated_at = ? WHERE id = ?").bind(now, matchId).run();
+    await env.DB.prepare("UPDATE song_matches SET review_state = 'rejected', song_id = NULL, owner_title = NULL, owner_artist = NULL, updated_at = ? WHERE id = ? AND EXISTS (SELECT 1 FROM media_items m WHERE m.id = song_matches.media_id AND m.owner_id = ?)").bind(now, matchId, auth.userId).run();
     return json({ id: matchId, reviewState: "rejected" });
   }
   if (action !== "confirm" && action !== "edit") throw new HttpError(400, "action must be confirm, edit, or reject");
@@ -239,18 +249,29 @@ export async function reviewSongMatch(request: Request, env: Env, matchId: strin
   if (!title || !artist) throw new HttpError(400, "Song title and Artist are required");
   const linkedSongId = await songId(env, title, artist);
   await env.DB.prepare(`
-    UPDATE song_matches SET review_state = ?, song_id = ?, owner_title = ?, owner_artist = ?, updated_at = ? WHERE id = ?
-  `).bind(action === "edit" ? "edited" : "confirmed", linkedSongId, action === "edit" ? title : null, action === "edit" ? artist : null, now, matchId).run();
+    UPDATE song_matches SET review_state = ?, song_id = ?, owner_title = ?, owner_artist = ?, updated_at = ?
+    WHERE id = ? AND EXISTS (SELECT 1 FROM media_items m WHERE m.id = song_matches.media_id AND m.owner_id = ?)
+  `).bind(action === "edit" ? "edited" : "confirmed", linkedSongId, action === "edit" ? title : null, action === "edit" ? artist : null, now, matchId, auth.userId).run();
   return json({ id: matchId, reviewState: action === "edit" ? "edited" : "confirmed", songId: linkedSongId });
 }
 
-export async function addManualSongMatch(request: Request, env: Env, mediaId: string): Promise<Response> {
+export async function deleteSongMatch(env: Env, matchId: string, auth: AuthContext): Promise<Response> {
+  const match = await env.DB.prepare(`
+    SELECT sm.id FROM song_matches sm JOIN media_items m ON m.id = sm.media_id
+    WHERE sm.id = ? AND m.owner_id = ?
+  `).bind(matchId, auth.userId).first<{ id: string }>();
+  if (!match) throw new HttpError(404, "Song Match not found");
+  await env.DB.prepare("DELETE FROM song_matches WHERE id = ? AND EXISTS (SELECT 1 FROM media_items m WHERE m.id = song_matches.media_id AND m.owner_id = ?)").bind(matchId, auth.userId).run();
+  return json({ id: match.id, deleted: true });
+}
+
+export async function addManualSongMatch(request: Request, env: Env, mediaId: string, auth: AuthContext): Promise<Response> {
   const input = await body(request);
   const title = text(input.title, "title");
   const artist = text(input.artist, "artist");
   const startMs = Number(input.startMs ?? 0);
   if (!Number.isSafeInteger(startMs) || startMs < 0) throw new HttpError(400, "startMs must be a non-negative integer");
-  const media = await env.DB.prepare("SELECT id FROM media_items WHERE id = ? AND media_type = 'video' AND status = 'ready'").bind(mediaId).first();
+  const media = await env.DB.prepare("SELECT id FROM media_items WHERE id = ? AND owner_id = ? AND media_type = 'video' AND status = 'ready'").bind(mediaId, auth.userId).first();
   if (!media) throw new HttpError(404, "Ready video not found");
   const linkedSongId = await songId(env, title, artist);
   const id = crypto.randomUUID();

@@ -1,0 +1,50 @@
+/* Hallmark · genre: mobile workbench · tone: utilitarian · anchor hue: cobalt · macrostructure: Workbench */
+/* Hallmark · pre-emit critique: P5 H5 E5 S5 R5 V4 · contrast: pass (40–41) · nav: native-tabs · slop: pass (42–49) · mobile: pass (34, 49–57) */
+:root {
+  --color-canvas: oklch(97.6% 0.007 260);
+  --color-surface: oklch(99.3% 0.004 260);
+  --color-ink: oklch(22.8% 0.025 260);
+  --color-muted: oklch(50.2% 0.031 260);
+  --color-subtle: oklch(56.9% 0.025 260);
+  --color-line: oklch(88.3% 0.014 260);
+  --color-control-line: oklch(62.5% 0.027 260);
+  --color-accent: oklch(57.5% 0.218 260);
+  --color-accent-ink: oklch(99.3% 0.004 260);
+  --color-media-ink: oklch(98.2% 0.006 260);
+  --color-accent-soft: oklch(95.7% 0.025 260);
+  --color-danger: oklch(48.7% 0.172 28);
+  --color-danger-soft: oklch(96.1% 0.023 28);
+  --color-success: oklch(50.1% 0.12 155);
+  --color-success-soft: oklch(95.6% 0.027 155);
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --radius-control: 10px;
+  --radius-panel: 18px;
+  --font-display: "Space Grotesk";
+  --font-body: "IBM Plex Sans";
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-canvas: oklch(16.8% 0.018 263.9);
+    --color-surface: oklch(21.7% 0.026 261);
+    --color-ink: oklch(96.9% 0.009 258.3);
+    --color-muted: oklch(75.8% 0.027 261.1);
+    --color-subtle: oklch(66.7% 0.031 259.6);
+    --color-line: oklch(31.6% 0.033 262.9);
+    --color-control-line: oklch(48.7% 0.042 262.6);
+    --color-accent: oklch(70.3% 0.155 264.8);
+    --color-accent-ink: oklch(16.8% 0.018 263.9);
+    --color-media-ink: oklch(98.1% 0.005 258.3);
+    --color-accent-soft: oklch(29.7% 0.079 262.9);
+    --color-danger: oklch(76.2% 0.142 24);
+    --color-danger-soft: oklch(28.9% 0.054 15.6);
+    --color-success: oklch(79% 0.142 159.7);
+    --color-success-soft: oklch(31.1% 0.046 165.5);
+  }
+}

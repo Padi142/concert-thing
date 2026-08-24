@@ -2,6 +2,7 @@ import { api } from "./api";
 import type { RecognitionStatus } from "./types";
 
 type RecognitionJob = { id: string; status: RecognitionStatus; attempt_count: number; last_error?: string | null };
+const TERMINAL_RECOGNITION_STATUSES = new Set<RecognitionStatus>(["completed", "no_match", "unsupported", "budget_exhausted", "failed"]);
 
 async function recognitionJob(mediaId: string, rerun: boolean) {
   return api<RecognitionJob>(`/api/media/${mediaId}/recognition`, {
@@ -33,4 +34,12 @@ export function recognizeVideo(mediaId: string, _file: File, progress?: (message
 
 export function recognizeStoredVideo(mediaId: string, _originalName: string, _contentType: string, progress?: (message: string) => void, rerun = false) {
   return recognizeWithRetry(mediaId, progress, rerun);
+}
+
+export async function waitForRecognition(mediaId: string): Promise<RecognitionJob> {
+  for (;;) {
+    const current = await api<RecognitionJob>(`/api/media/${mediaId}/recognition`);
+    if (TERMINAL_RECOGNITION_STATUSES.has(current.status)) return current;
+    await new Promise(resolve => window.setTimeout(resolve, 8_000));
+  }
 }

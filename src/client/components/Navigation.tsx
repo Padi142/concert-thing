@@ -1,30 +1,37 @@
 import React from "react";
-import { ImagePlus, Inbox, Library, Music2 } from "lucide-react";
+import { CalendarDays, Inbox, Images, UploadCloud } from "lucide-react";
+import { UserButton } from "@clerk/react";
 
-const links = [
-  { href: "#library", label: "Library", icon: Library },
-  { href: "#inbox", label: "Inbox", icon: Inbox },
-  { href: "#shows", label: "Shows", icon: Music2 },
-  { href: "#upload", label: "Upload", icon: ImagePlus, primary: true },
+export type ViewName = "library" | "inbox" | "shows" | "queue";
+
+const tabs: { name: ViewName; label: string; icon: typeof Images }[] = [
+  { name: "library", label: "Library", icon: Images },
+  { name: "inbox", label: "Inbox", icon: Inbox },
+  { name: "shows", label: "Shows", icon: CalendarDays },
+  { name: "queue", label: "Queue", icon: UploadCloud },
 ];
 
-export default function Navigation({ inboxCount }: { inboxCount: number }) {
+export default function Navigation({ active, onNavigate, inboxCount }: { active: ViewName; onNavigate: (view: ViewName) => void; inboxCount: number }) {
   return <>
-    <header className="border-b border-ink bg-paper px-5 md:sticky md:top-0 md:z-40">
-      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between">
-        <a href="#library" className="font-bold tracking-[.08em]">ARCHIVE</a>
-        <nav className="hidden items-center gap-8 text-xs font-bold md:flex" aria-label="Primary navigation">
-          {links.map(({ href, label, primary }) => <a key={href} href={href} className={primary ? "bg-acid px-4 py-3" : "py-3 hover:underline"}>{label}{label === "Inbox" && inboxCount > 0 ? ` · ${inboxCount}` : ""}</a>)}
+    <header className="sticky top-0 z-40 hidden border-b border-line bg-canvas md:block">
+      <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-5">
+        <a href="#top" onClick={event => { event.preventDefault(); onNavigate("library"); }} className="font-display text-lg tracking-tight">Concert Archive</a>
+        <nav className="flex items-center gap-1 text-sm font-semibold" aria-label="Primary navigation">
+          {tabs.map(({ name, label, icon: Icon }) => <button key={name} type="button" onClick={() => onNavigate(name)} aria-current={active === name ? "page" : undefined} className={`flex min-h-10 items-center gap-2 rounded-control px-3 transition ${active === name ? "bg-accentSoft text-blue" : "text-muted hover:text-ink"}`}>
+            <Icon size={16} />{label}{name === "inbox" && inboxCount > 0 ? ` · ${inboxCount}` : ""}
+          </button>)}
+          <div className="ml-3 border-l border-line pl-4"><UserButton /></div>
         </nav>
-        <span className="text-xs font-bold text-ink/45 md:hidden">{inboxCount} inbox</span>
       </div>
     </header>
 
-    <nav aria-label="Primary navigation" className="fixed inset-x-0 bottom-0 z-50 grid grid-cols-4 border-t border-ink bg-paper pb-[env(safe-area-inset-bottom)] md:hidden">
-      {links.map(({ href, label, icon: Icon, primary }) => <a key={href} href={href} className={`relative flex min-h-16 flex-col items-center justify-center gap-1 text-[10px] font-bold ${primary ? "bg-acid" : ""}`}>
-        <Icon size={20} strokeWidth={2.2} />{label}
-        {label === "Inbox" && inboxCount > 0 && <span className="absolute right-[24%] top-2 grid h-4 min-w-4 place-items-center bg-ember px-1 text-[9px] text-white">{inboxCount}</span>}
-      </a>)}
+    <nav aria-label="Primary navigation" className="fixed inset-x-0 bottom-0 z-50 grid grid-cols-4 border-t border-line bg-surface pb-[env(safe-area-inset-bottom)] md:hidden">
+      {tabs.map(({ name, label, icon: Icon }) => <button key={name} type="button" onClick={() => onNavigate(name)} aria-current={active === name ? "page" : undefined} className={`relative flex min-h-[68px] flex-col items-center justify-center gap-1 text-[11px] font-semibold ${active === name ? "text-blue" : "text-subtle"}`}>
+        <Icon size={21} strokeWidth={active === name ? 2.3 : 2} />
+        {label}
+        {name === "inbox" && inboxCount > 0 && <span className="absolute right-[22%] top-2 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-danger px-1 text-[10px] font-semibold text-accentInk">{inboxCount}</span>}
+      </button>)}
     </nav>
+    <div className="fixed right-4 top-[max(1rem,env(safe-area-inset-top))] z-50 md:hidden"><UserButton /></div>
   </>;
 }

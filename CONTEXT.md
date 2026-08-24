@@ -5,7 +5,7 @@ A private personal archive for organizing, identifying, finding, and selectively
 ## Language
 
 **Owner**:
-The sole person who manages and organizes the archive.
+One authenticated account that manages and organizes its own isolated Library.
 _Avoid_: Admin, user
 
 **Library**:

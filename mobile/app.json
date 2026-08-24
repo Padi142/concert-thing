@@ -1,0 +1,70 @@
+{
+  "expo": {
+    "name": "Concert Thing",
+    "slug": "concert-thing",
+    "version": "0.1.4",
+    "orientation": "portrait",
+    "scheme": "concertthing",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "Concert Thing needs your permission to archive concert photos and videos.",
+        "NSPhotoLibraryAddUsageDescription": "Concert Thing can save exported concert memories to your photo library.",
+        "UIBackgroundModes": [
+          "fetch",
+          "processing",
+          "fetch",
+          "processing"
+        ],
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "bundleIdentifier": "com.padi142.concert-thing"
+    },
+    "android": {
+      "versionCode": 5,
+      "adaptiveIcon": {
+        "backgroundColor": "#F5F7FB"
+      },
+      "permissions": [
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_AUDIO"
+      ],
+      "blockedPermissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.READ_MEDIA_AUDIO",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.SYSTEM_ALERT_WINDOW"
+      ],
+      "package": "com.padi142.concertthing"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-document-picker",
+      "expo-image-picker",
+      "expo-media-library",
+      "expo-secure-store",
+      "expo-system-ui",
+      [
+        "expo-background-task",
+        {
+          "minimumInterval": 15
+        }
+      ],
+      "expo-sqlite",
+      "@clerk/expo"
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "33ab6577-e089-467e-9047-40235be0de25"
+      }
+    },
+    "owner": "padi142"
+  }
+}

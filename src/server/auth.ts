@@ -1,24 +1,105 @@
+import { verifyToken } from "@clerk/backend";
 import type { Env } from "./env";
-import { body, HttpError, JSON_HEADERS, text } from "./http";
-function requestToken(request: Request): string | undefined {
-  const bearer = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
+import { HttpError, json } from "./http";
+
+/** The only tenant identity accepted by private archive operations. */
+export type AuthContext = {
+  userId: string;
+};
+
+function authorizedParties(env: Env): string[] | undefined {
+  if (!env.CLERK_AUTHORIZED_PARTIES) return undefined;
+  const parties = env.CLERK_AUTHORIZED_PARTIES.split(",").map(value => value.trim()).filter(Boolean);
+  return parties.length ? parties : undefined;
+}
+
+function sessionToken(request: Request): string | undefined {
+  const authorization = request.headers.get("authorization");
+  const bearer = authorization?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim();
   if (bearer) return bearer;
-  const cookie = request.headers.get("cookie")?.split(";").map((value) => value.trim()).find((value) => value.startsWith("owner_session="));
-  return cookie ? decodeURIComponent(cookie.slice("owner_session=".length)) : undefined;
-}
-
-export function authenticate(request: Request, env: Env): void {
-  if (!env.OWNER_TOKEN || requestToken(request) !== env.OWNER_TOKEN) throw new HttpError(401, "Owner token is invalid");
-}
-
-export async function createSession(request: Request, env: Env): Promise<Response> {
-  const input = await body(request);
-  const token = text(input.token, "token");
-  if (!env.OWNER_TOKEN || token !== env.OWNER_TOKEN) throw new HttpError(401, "Owner token is invalid");
-  return new Response(JSON.stringify({ owner: true }), {
-    headers: {
-      ...JSON_HEADERS,
-      "set-cookie": `owner_session=${encodeURIComponent(token)}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=2592000`
+  const cookie = request.headers.get("cookie");
+  if (!cookie) return undefined;
+  for (const part of cookie.split(";")) {
+    const [name, ...value] = part.trim().split("=");
+    if (name === "__session") {
+      try {
+        return decodeURIComponent(value.join("="));
+      } catch {
+        return undefined;
+      }
     }
+  }
+  return undefined;
+}
+
+/**
+ * Authenticate a request with Clerk's session token. We explicitly extract
+ * both Authorization: Bearer and the normal __session cookie so this works
+ * for the mobile Bearer flow as well as browser requests.
+ */
+export async function authenticate(request: Request, env: Env): Promise<AuthContext> {
+  const token = sessionToken(request);
+  if (!env.CLERK_JWT_KEY) {
+    throw new HttpError(503, "Clerk authentication is not configured");
+  }
+  if (!token) throw new HttpError(401, "Authentication is required");
+
+  try {
+    const claims = await verifyToken(token, {
+      jwtKey: env.CLERK_JWT_KEY,
+      authorizedParties: authorizedParties(env),
+    });
+    if (!claims.sub) throw new Error("missing user");
+    return { userId: claims.sub };
+  } catch (error) {
+    if (error instanceof HttpError) throw error;
+    throw new HttpError(401, "Authentication is required");
+  }
+}
+
+/**
+ * Atomically assign the pre-authentication archive to the first Clerk user.
+ * The migration creates a single-row claim guard. A later user can never
+ * claim the same NULL-owned records, even if the endpoint is called again.
+ */
+export async function claimLegacyData(env: Env, auth: AuthContext): Promise<Response> {
+  const now = new Date().toISOString();
+  const claimStatement = env.DB.prepare(`
+    INSERT INTO archive_legacy_claim (id,user_id,claimed_at)
+    SELECT 1,?,?
+    WHERE NOT EXISTS (SELECT 1 FROM archive_legacy_claim)
+      AND NOT EXISTS (SELECT 1 FROM shows WHERE owner_id IS NOT NULL)
+      AND NOT EXISTS (SELECT 1 FROM media_items WHERE owner_id IS NOT NULL)
+  `).bind(auth.userId, now);
+  // The insert and both updates are sent in one D1 batch. If a claim already
+  // exists, the conditional updates are no-ops unless it belongs to this user.
+  let results: D1Result[];
+  try {
+    results = await env.DB.batch([
+      claimStatement,
+      env.DB.prepare("UPDATE shows SET owner_id = ? WHERE owner_id IS NULL AND EXISTS (SELECT 1 FROM archive_legacy_claim WHERE id = 1 AND user_id = ?)").bind(auth.userId, auth.userId),
+      env.DB.prepare("UPDATE media_items SET owner_id = ? WHERE owner_id IS NULL AND EXISTS (SELECT 1 FROM archive_legacy_claim WHERE id = 1 AND user_id = ?)").bind(auth.userId, auth.userId),
+    ]);
+  } catch (error) {
+    // A concurrent first claim can win the single-row constraint. Treat that
+    // expected race as an ordinary empty result for the losing user.
+    let claim: { user_id: string } | null = null;
+    try {
+      claim = await env.DB.prepare("SELECT user_id FROM archive_legacy_claim WHERE id = 1").first<{ user_id: string }>();
+    } catch {
+      // Preserve the original database error if the claim row cannot be read.
+    }
+    if (claim) return json({ claimed: false, legacyOwner: claim.user_id === auth.userId, shows: 0, mediaItems: 0 });
+    throw error;
+  }
+  if (!results[0]?.meta?.changes) {
+    const claim = await env.DB.prepare("SELECT user_id FROM archive_legacy_claim WHERE id = 1").first<{ user_id: string }>();
+    return json({ claimed: false, legacyOwner: claim?.user_id === auth.userId, shows: 0, mediaItems: 0 });
+  }
+  return json({
+    claimed: true,
+    legacyOwner: true,
+    shows: Number(results[1]?.meta?.changes ?? 0),
+    mediaItems: Number(results[2]?.meta?.changes ?? 0),
   });
 }

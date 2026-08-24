@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { ImagePlus } from "lucide-react";
+import { getToken, useAuth } from "@clerk/react";
 import { ApiError, api } from "../api";
 import { sha256File } from "../mediaHash";
 import { loadUploadState, normalizeUploadState } from "../uploadState";
@@ -21,24 +22,43 @@ type Completion = {
   assignment: { showId: string; method: "automatic" | "owner" } | null;
 };
 
-function fingerprintFor(file: File) {
-  return `concert-upload:${file.name}:${file.size}:${file.lastModified}`;
+function fingerprintFor(file: File, ownerId: string) {
+  return `concert-upload:${ownerId}:${file.name}:${file.size}:${file.lastModified}`;
 }
 
-function interruptedQueue(): QueueItem[] {
+async function clientUploadIdFor(file: File, ownerId: string): Promise<string> {
+  const input = new TextEncoder().encode(`${ownerId}\0${file.name}\0${file.type}\0${file.size}\0${file.lastModified}`);
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", input));
+  return `web-${[...digest].map(byte => byte.toString(16).padStart(2, "0")).join("")}`;
+}
+
+function interruptedQueue(ownerId: string): QueueItem[] {
+  const prefix = `concert-upload:${ownerId}:`;
   return Object.keys(localStorage)
-    .filter(key => key.startsWith("concert-upload:") && loadUploadState(localStorage.getItem(key)))
+    .filter(key => key.startsWith(prefix) && loadUploadState(localStorage.getItem(key)))
     .map(key => {
-      const parts = key.slice("concert-upload:".length).split(":");
+      const parts = key.slice(prefix.length).split(":");
       return { id: key, name: parts.slice(0, -2).join(":"), progress: 0, status: "Paused — reselect to resume", active: false, resumable: true };
     });
 }
 
 export default function Uploader({ shows, onMediaComplete, report }: { shows: Show[]; onMediaComplete: () => void; report: Report }) {
-  const [queue, setQueue] = useState<QueueItem[]>(interruptedQueue);
+  const { userId } = useAuth();
+  const ownerId = userId ?? "signed-out";
+  const [queue, setQueue] = useState<QueueItem[]>(() => interruptedQueue(ownerId));
   const [uploading, setUploading] = useState(false);
   const [showId, setShowId] = useState("");
   const input = useRef<HTMLInputElement>(null);
+  const identityAbort = useRef(new AbortController());
+
+  useEffect(() => {
+    identityAbort.current.abort();
+    identityAbort.current = new AbortController();
+    setQueue(interruptedQueue(ownerId));
+    setShowId("");
+    setUploading(false);
+    return () => identityAbort.current.abort();
+  }, [ownerId]);
 
   useEffect(() => {
     if (!uploading) return;
@@ -51,11 +71,18 @@ export default function Uploader({ shows, onMediaComplete, report }: { shows: Sh
     setQueue(items => items.map(item => item.id === id ? { ...item, ...values } : item));
   }
 
-  async function sendPart(url: string, chunk: Blob) {
+  async function sendPart(url: string, chunk: Blob, signal: AbortSignal) {
     let lastError: Error | undefined;
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const response = await fetch(url, { method: "PUT", body: chunk, credentials: "same-origin" });
+        const token = await getToken();
+        const response = await fetch(url, {
+          method: "PUT",
+          body: chunk,
+          signal,
+          credentials: "same-origin",
+          headers: token ? { authorization: `Bearer ${token}` } : undefined,
+        });
         const value = await response.json() as { partNumber?: number; etag?: string; error?: string };
         if (!response.ok) throw new Error(value.error || "Part upload failed");
         return value as { partNumber: number; etag: string };
@@ -67,13 +94,14 @@ export default function Uploader({ shows, onMediaComplete, report }: { shows: Sh
     throw lastError;
   }
 
-  async function getState(file: File, contentHash: string | null): Promise<{ state: UploadState; fingerprint: string }> {
-    const fingerprint = fingerprintFor(file);
+  async function getState(file: File, contentHash: string | null, signal: AbortSignal): Promise<{ state: UploadState; fingerprint: string }> {
+    const fingerprint = fingerprintFor(file, ownerId);
     const saved = loadUploadState(localStorage.getItem(fingerprint));
     if (saved) return { state: saved, fingerprint };
     const response = await api<unknown>("/api/uploads", {
       method: "POST",
-      body: JSON.stringify({ name: file.name, type: file.type, size: file.size, ...(contentHash ? { contentHash } : {}) }),
+      signal,
+      body: JSON.stringify({ clientUploadId: await clientUploadIdFor(file, ownerId), name: file.name, type: file.type, size: file.size, ...(contentHash ? { contentHash } : {}) }),
     });
     const state = normalizeUploadState(response);
     localStorage.setItem(fingerprint, JSON.stringify(state));
@@ -81,13 +109,15 @@ export default function Uploader({ shows, onMediaComplete, report }: { shows: Sh
   }
 
   async function uploadFile(file: File, queueId: string, selectedShowId: string) {
+    const signal = identityAbort.current.signal;
     patch(queueId, { status: file.type.startsWith("video/") ? "Checking for duplicate" : "Starting upload" });
     const contentHash = file.type.startsWith("video/") ? await sha256File(file) : null;
-    const { state, fingerprint } = await getState(file, contentHash);
+    const { state, fingerprint } = await getState(file, contentHash, signal);
     patch(queueId, { status: "Reading media date" });
     const [timestamp, durationMs] = await Promise.all([mediaTimestamp(file), videoDuration(file)]);
     await api(`/api/uploads/${state.mediaId}`, {
       method: "PATCH",
+      signal,
       body: JSON.stringify({ ...timestamp, durationMs, showId: selectedShowId || null }),
     });
 
@@ -97,7 +127,7 @@ export default function Uploader({ shows, onMediaComplete, report }: { shows: Sh
       if (!state.completed.some(part => part.partNumber === partNumber)) {
         patch(queueId, { status: `Part ${partNumber} of ${totalParts}` });
         const chunk = file.slice(index * state.chunkSize, Math.min(file.size, (index + 1) * state.chunkSize));
-        const part = await sendPart(`/api/uploads/${state.mediaId}/parts/${partNumber}`, chunk);
+        const part = await sendPart(`/api/uploads/${state.mediaId}/parts/${partNumber}`, chunk, signal);
         state.completed.push(part);
         localStorage.setItem(fingerprint, JSON.stringify(state));
       }
@@ -107,6 +137,7 @@ export default function Uploader({ shows, onMediaComplete, report }: { shows: Sh
     patch(queueId, { status: "Finishing" });
     const completed = await api<Completion>(`/api/uploads/${state.mediaId}/complete`, {
       method: "POST",
+      signal,
       body: JSON.stringify({ parts: state.completed }),
     });
     localStorage.removeItem(fingerprint);
@@ -151,7 +182,7 @@ export default function Uploader({ shows, onMediaComplete, report }: { shows: Sh
       return;
     }
 
-    const entries = uniqueFiles.map(file => ({ file, queueId: fingerprintFor(file) }));
+    const entries = uniqueFiles.map(file => ({ file, queueId: fingerprintFor(file, ownerId) }));
     setQueue(items => {
       const resumedIds = new Set(entries.map(entry => entry.queueId));
       const activeItems = entries.map(({ file, queueId }) => ({ id: queueId, name: file.name, progress: 0, status: "Waiting", active: true, resumable: true }));
@@ -188,23 +219,23 @@ export default function Uploader({ shows, onMediaComplete, report }: { shows: Sh
   }
 
   return <>
-    <label className={`group flex min-h-48 flex-col items-start justify-between border border-ink p-5 text-left transition md:min-h-56 md:p-7 ${uploading ? "cursor-wait bg-ink/10" : "cursor-pointer bg-acid active:bg-acid/70"}`}>
+    <label className={`flex min-h-44 flex-col items-start justify-between rounded-panel border p-5 transition md:min-h-48 md:p-6 ${uploading ? "cursor-wait opacity-60" : "cursor-pointer border-control bg-accentSoft active:opacity-80"}`}>
       <input ref={input} className="hidden" type="file" accept="image/*,video/*" multiple disabled={uploading} onChange={event => void selected(event.target.files)} />
-      <ImagePlus size={34} strokeWidth={1.8} />
-      <span><strong className="block text-2xl leading-tight tracking-tight md:text-3xl">{uploading ? "Uploading" : "Choose photos or videos"}</strong><small className="mt-2 block max-w-lg text-sm text-ink/65">Completed items appear immediately. Interrupted files resume when reselected.</small></span>
+      <span className="grid h-12 w-12 place-items-center rounded-control bg-blue text-accentInk"><ImagePlus size={22} /></span>
+      <span><strong className="block font-display text-2xl leading-tight">{uploading ? "Uploading" : "Choose photos or videos"}</strong><small className="mt-2 block max-w-lg text-sm text-muted">Completed items appear in your Library immediately. Interrupted files resume when reselected.</small></span>
     </label>
 
-    <label className="mt-3 block">Assign uploads
-      <select value={showId} disabled={uploading} onChange={event => setShowId(event.target.value)}>
+    <label className="mt-4 block">Assign uploads to
+      <select className="mt-2" value={showId} disabled={uploading} onChange={event => setShowId(event.target.value)}>
         <option value="">Automatically from file date</option>
         {shows.map(show => <option key={show.id} value={show.id}>{show.title}</option>)}
       </select>
     </label>
 
-    {queue.length > 0 && <div className="mt-4 border-t border-ink">{queue.map(item => <div key={item.id} className="grid grid-cols-[1fr_auto] gap-1 border-b border-ink/25 py-4 text-sm">
-      <strong className="truncate">{item.name}</strong><span className="font-bold">{item.progress}%</span>
-      <small className="text-ink/50">{item.status}</small>{item.resumable && !item.active && <button className="justify-self-end text-xs font-bold underline" onClick={() => void cancel(item)}>Cancel</button>}
-      <div className="col-span-2 mt-2 h-1 bg-ink/10"><div className={`h-full transition-all ${item.active ? "bg-ember" : "bg-ink"}`} style={{ width: `${item.progress}%` }} /></div>
+    {queue.length > 0 && <div className="mt-5 border-t border-line">{queue.map(item => <div key={item.id} className="border-b border-line py-4 text-sm">
+      <div className="flex items-baseline justify-between gap-3"><strong className="truncate font-semibold">{item.name}</strong><span className="shrink-0 tabular-nums text-muted">{item.progress}%</span></div>
+      <div className="mt-0.5 flex items-center justify-between gap-3"><small className="text-muted">{item.status}</small>{item.resumable && !item.active && <button type="button" className="btn-quiet -mr-3 min-h-9 shrink-0" onClick={() => void cancel(item)}>Cancel</button>}</div>
+      <div className="mt-2 h-1 overflow-hidden rounded-full bg-line"><div className={`h-full transition-all ${item.active ? "bg-blue" : "bg-subtle"}`} style={{ width: `${item.progress}%` }} /></div>
     </div>)}</div>}
   </>;
 }

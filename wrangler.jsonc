@@ -7,7 +7,7 @@
     "directory": "./dist",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*"]
+    "run_worker_first": ["/api/*", "/downloads/*", "/video/*"]
   },
   "d1_databases": [
     {
@@ -20,7 +20,8 @@
   "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "concert-thing-media" }],
   "stream": { "binding": "STREAM" },
   "vars": {
-    "ACRCLOUD_REGION": "eu-west-1"
+    "ACRCLOUD_REGION": "eu-west-1",
+    "CLERK_AUTHORIZED_PARTIES": "https://shows.krejzac.cz,https://concert-thing.padi142.workers.dev,http://localhost:5173"
   },
   "observability": { "enabled": true }
 }

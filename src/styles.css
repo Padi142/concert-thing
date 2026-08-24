@@ -1,21 +1,70 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Playfair+Display:ital,wght@1,600&display=swap');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --c-canvas: #f5f7fb;
+  --c-surface: #fcfdff;
+  --c-ink: #151a24;
+  --c-muted: #596579;
+  --c-subtle: #6b7587;
+  --c-line: #d6dce6;
+  --c-control-line: #7c8798;
+  --c-accent: #2166f3;
+  --c-accent-ink: #fcfdff;
+  --c-media-ink: #f7f9fc;
+  --c-accent-soft: #eaf1ff;
+  --c-danger: #b42318;
+  --c-danger-soft: #fdecec;
+  --c-success: #087443;
+  --c-success-soft: #e7f6ee;
+  --c-placeholder: #e7ebf2;
+  --scrim: rgba(23, 26, 32, 0.44);
+  --scrim-strong: rgba(23, 26, 32, 0.8);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --c-canvas: #0b0f17;
+    --c-surface: #131a26;
+    --c-ink: #f1f5fb;
+    --c-muted: #a7b1c2;
+    --c-subtle: #8995a8;
+    --c-line: #293243;
+    --c-control-line: #536078;
+    --c-accent: #6f9bff;
+    --c-accent-ink: #0b0f17;
+    --c-media-ink: #f7f9fc;
+    --c-accent-soft: #172b54;
+    --c-danger: #ff8b85;
+    --c-danger-soft: #331b1e;
+    --c-success: #58d69a;
+    --c-success-soft: #14291f;
+    --c-placeholder: #1a2231;
+    --scrim: rgba(4, 6, 10, 0.58);
+    --scrim-strong: rgba(4, 6, 10, 0.88);
+  }
+}
+
 @layer base {
+  html, body { overflow-x: clip; }
   html { scroll-behavior: smooth; }
-  body { @apply m-0 bg-paper font-sans text-ink antialiased; }
-  input, select { @apply mt-1.5 block min-h-12 w-full rounded-none border border-ink/30 bg-white px-3 py-2.5 text-base outline-none transition focus:border-ink focus:ring-1 focus:ring-ink md:min-h-11 md:text-sm; }
-  label { @apply text-xs font-bold; }
+  body { @apply m-0 bg-canvas font-sans text-ink antialiased; }
+  input, select, textarea { @apply block w-full rounded-control border border-control bg-surface px-3 py-2.5 text-base text-ink outline-none transition placeholder:text-subtle focus:border-blue md:text-sm; }
+  label { @apply block text-[13px] font-semibold text-muted; }
   a, button, input, select { -webkit-tap-highlight-color: transparent; }
-  :focus-visible { @apply outline outline-2 outline-offset-2 outline-ember; }
+  :focus-visible { @apply outline outline-2 outline-offset-2 outline-blue; }
 }
 @layer components {
-  .eyebrow { @apply mb-2 text-[10px] font-bold uppercase tracking-[.22em] text-ink/55; }
-  .button { @apply inline-flex min-h-12 items-center justify-center gap-2 border border-ink bg-ink px-4 py-2.5 text-xs font-bold text-white transition active:translate-y-0.5 disabled:pointer-events-none disabled:opacity-40 md:min-h-11; }
-  .button-secondary { @apply button bg-transparent text-ink hover:bg-white; }
-  .panel { @apply scroll-mt-4 border-t border-ink py-10 md:scroll-mt-20 md:py-16; }
-  .media-tile { @apply overflow-hidden border border-ink/25 bg-white/50; }
+  .eyebrow { @apply mb-1 text-[12px] font-semibold uppercase tracking-[.11em] text-muted; }
+  .btn-primary { @apply inline-flex min-h-12 items-center justify-center gap-2 rounded-control bg-blue px-5 text-base font-semibold text-accentInk transition active:opacity-80 disabled:pointer-events-none disabled:bg-line disabled:text-muted md:min-h-11 md:text-sm; }
+  .btn-secondary { @apply inline-flex min-h-12 items-center justify-center gap-2 rounded-control border border-control bg-surface px-4 text-sm font-semibold text-ink transition active:opacity-70 disabled:pointer-events-none disabled:opacity-40 md:min-h-11; }
+  .btn-quiet { @apply inline-flex items-center gap-1 px-3 text-base font-semibold text-blue transition active:opacity-70 disabled:text-subtle md:text-sm; }
+  .icon-btn { @apply grid h-12 w-12 place-items-center rounded-control border border-control bg-surface text-ink transition active:opacity-60; }
+  .hairline { @apply h-px bg-line; }
+  .empty-state { @apply my-8 max-w-md border-l-2 border-blue py-2 pl-4 pr-2; }
+  .error-line { @apply my-3 max-w-md border-l-2 border-danger py-2 pl-3 pr-2 text-[15px] leading-snug text-danger; }
+  .media-tile { @apply relative aspect-square w-full overflow-hidden rounded-tile bg-placeholder; }
+  .sheet-scrim { background: var(--scrim-strong); }
 }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } * { transition: none !important; } }

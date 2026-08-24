@@ -1,0 +1,21 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'com.concertthing'
+version = '0.1.0'
+
+android {
+  namespace 'com.concertthing.backgroundupload'
+  defaultConfig {
+    versionCode 1
+    versionName '0.1.0'
+  }
+}
+
+dependencies {
+  implementation 'androidx.core:core-ktx:1.17.0'
+  implementation 'com.squareup.okhttp3:okhttp:4.9.2'
+  testImplementation 'junit:junit:4.13.2'
+}
