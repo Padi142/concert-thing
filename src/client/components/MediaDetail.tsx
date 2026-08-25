@@ -35,7 +35,7 @@ export default function MediaDetail({ item, shows, matches, onClose, onChanged, 
     setBusy(true);
     try {
       await api(`/api/media/${item.id}`, { method: "DELETE" });
-      report("Deleted from archive");
+      report("Removed from Library");
       onChanged();
       onClose();
     } catch (error) {

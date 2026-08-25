@@ -35,15 +35,29 @@ pnpm test
 pnpm dlx expo-doctor
 ```
 
-## Android release builds
+## Android builds
 
-The Android release build needs JDK 17 on this machine. OpenJDK 26 fails
-Android's SDK 36 JDK-image transform (`JdkImageTransform`/`jlink`) while
-compiling native dependencies such as NetInfo and masked-view, and can also
-fail the Worklets native build. Select JDK 17 explicitly before running Gradle:
+Android builds need a **full JDK**, not only a Java runtime. JDK 17 or 21 is
+supported; Java 25 is not a safe choice for the Android toolchain. On Fedora,
+install the compiler package first:
 
 ```bash
-export JAVA_HOME="$(/usr/libexec/java_home -v 17)"
+sudo dnf install java-21-openjdk-devel
+```
+
+The local EAS build wrapper selects a JDK with `javac` automatically (including
+JDKs installed under `~/.jdks`):
+
+```bash
+pnpm run build:android:local
+```
+
+You can also select one explicitly with `JAVA_HOME=/path/to/jdk-21 ...`.
+
+For a release APK, select the JDK before running Gradle:
+
+```bash
+export JAVA_HOME=/usr/lib/jvm/java-21-openjdk
 ```
 
 Gradle also needs a machine-local Android SDK path. If `android/local.properties`

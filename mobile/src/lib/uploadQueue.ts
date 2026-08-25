@@ -15,8 +15,9 @@ import { getCurrentUserId, getSessionToken } from "./clerk";
 import { shouldAutoRecognizeUpload } from "./autoRecognition";
 import { loadApiConfig, loadAutoRecognition } from "./config";
 import { sha256ByRanges } from "./mediaHash";
-import { canStartUpload, completedParts, createParts, markUploadComplete, markUploadDuplicate, markUploadStarted, mergePartReceipts, nextPart, retryUpload, selectUploadBatch } from "./queueState";
+import { canStartUpload, completedParts, createParts, markUploadComplete, markUploadDuplicate, markUploadQuotaBlocked, markUploadStarted, mergePartReceipts, nextPart, restartExpiredUpload, retryUpload, selectUploadBatch } from "./queueState";
 import { enqueueRecognition } from "./recognitionQueue";
+import { formatStorageBytes, refreshStorage } from "./storage";
 import type { QueuePart, QueueUpload } from "../types";
 
 export const QUEUE_BACKGROUND_TASK = "concert-thing-upload-queue";
@@ -159,21 +160,27 @@ async function uploadOnePart(upload: QueueUpload, part: QueuePart, accountId: st
   }
 }
 
-async function reconcileRemote(upload: QueueUpload, accountId: string): Promise<boolean> {
+async function reconcileRemote(upload: QueueUpload, accountId: string): Promise<"complete" | "restart" | false> {
   if (!upload.media_id) return false;
   try {
     await ensureQueueAccount(accountId);
     const remote = await getUploadStatus(upload.media_id);
     if (remote.status === "ready" || remote.uploadId === null) {
       await finishUpload(upload, accountId);
-      return true;
+      return "complete";
     }
     if (remote.completed?.length) {
       const parts = await listQueueParts(upload.id, accountId);
       const merged = mergePartReceipts(parts, remote.completed);
       await replaceQueueParts(upload.id, accountId, merged);
     }
-  } catch {
+  } catch (error) {
+    if (error instanceof ApiError && (error.data.code === "UPLOAD_EXPIRED" || error.status === 404 || error.status === 410)) {
+      await replaceQueueParts(upload.id, accountId, []);
+      await updateQueueUpload(upload.id, accountId, restartExpiredUpload(upload));
+      emit(await listQueueUploads(accountId));
+      return "restart";
+    }
     // Reconciliation is best effort; the next retry will ask the server again.
   }
   return false;
@@ -182,6 +189,7 @@ async function reconcileRemote(upload: QueueUpload, accountId: string): Promise<
 async function finishUpload(upload: QueueUpload, accountId: string): Promise<void> {
   await ensureQueueAccount(accountId);
   await updateQueueUpload(upload.id, accountId, markUploadComplete(upload));
+  void refreshStorage().catch(() => undefined);
   // Originals are now durable in R2; release the private local copy.
   await FileSystem.deleteAsync(upload.local_uri, { idempotent: true }).catch(() => undefined);
   const autoRecognize = await loadAutoRecognition().catch(() => false);
@@ -200,7 +208,7 @@ async function processUpload(current: QueueUpload, accountId: string): Promise<v
     const started = markUploadStarted(upload);
     await updateQueueUpload(upload.id, accountId, started);
     upload = started;
-    const queueDepth = (await listQueueUploads(accountId)).filter((item) => !["complete", "duplicate", "failed", "cancelled"].includes(item.state)).length;
+    const queueDepth = (await listQueueUploads(accountId)).filter((item) => !["complete", "duplicate", "blocked", "failed", "cancelled"].includes(item.state)).length;
     await updateUploadForegroundService(Math.max(1, queueDepth), `Preparing ${upload.original_name}`, 0).catch(() => undefined);
 
     if (upload.content_type.startsWith("video/") && !upload.content_hash) {
@@ -217,6 +225,12 @@ async function processUpload(current: QueueUpload, accountId: string): Promise<v
       size: upload.byte_size,
       ...(upload.content_hash ? { contentHash: upload.content_hash } : {}),
     });
+    void refreshStorage().catch(() => undefined);
+    if (upload.media_id && upload.media_id !== init.mediaId) {
+      // The seven-day cleanup removed the old remote attempt. Receipts from
+      // that multipart upload cannot be reused with the replacement.
+      await replaceQueueParts(upload.id, accountId, []);
+    }
     if (init.status === "ready" || !init.uploadId) {
       if (upload.content_type.startsWith("video/")) {
         await ensureQueueAccount(accountId);
@@ -256,7 +270,9 @@ async function processUpload(current: QueueUpload, accountId: string): Promise<v
       await ensureQueueAccount(accountId);
       await completeUpload(remoteMediaId, completedParts(parts));
     } catch (error) {
-      if (!await reconcileRemote(upload, accountId)) throw error;
+      const reconciliation = await reconcileRemote(upload, accountId);
+      if (reconciliation === "restart") return;
+      if (!reconciliation) throw error;
     }
     if (upload.content_type.startsWith("video/")) {
       await ensureQueueAccount(accountId);
@@ -271,6 +287,13 @@ async function processUpload(current: QueueUpload, accountId: string): Promise<v
       const duplicate = markUploadDuplicate(upload, duplicateMediaId);
       await updateQueueUpload(upload.id, accountId, duplicate);
       await FileSystem.deleteAsync(upload.local_uri, { idempotent: true }).catch(() => undefined);
+      emit(await listQueueUploads(accountId));
+      return;
+    }
+    if (error instanceof ApiError && error.data.code === "STORAGE_QUOTA_EXCEEDED") {
+      const available = typeof error.data.availableBytes === "number" ? formatStorageBytes(error.data.availableBytes) : "0 GB";
+      await updateQueueUpload(upload.id, accountId, markUploadQuotaBlocked(upload, `${available} available`));
+      void refreshStorage().catch(() => undefined);
       emit(await listQueueUploads(accountId));
       return;
     }
@@ -337,6 +360,7 @@ export async function cancelQueuedUpload(uploadId: string): Promise<void> {
   await removeQueueUpload(uploadId, accountId);
   await FileSystem.deleteAsync(upload.local_uri, { idempotent: true }).catch(() => undefined);
   emit(await listQueueUploads(accountId));
+  void refreshStorage().catch(() => undefined);
 }
 
 export async function retryQueuedUpload(uploadId: string): Promise<void> {

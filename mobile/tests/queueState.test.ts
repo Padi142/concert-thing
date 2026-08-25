@@ -8,6 +8,8 @@ import {
   createQueueUpload,
   markUploadComplete,
   markUploadDuplicate,
+  markUploadQuotaBlocked,
+  restartExpiredUpload,
   mergePartReceipts,
   nextPart,
   retryUpload,
@@ -59,6 +61,27 @@ assert.equal(retrying.state, "retrying");
 assert.equal(retrying.next_retry_at, now + 2_000);
 assert.equal(canStartUpload(retrying, [retrying], now), false);
 assert.equal(canStartUpload(retrying, [retrying], retrying.next_retry_at!), true);
+
+const quotaBlocked = markUploadQuotaBlocked(upload, "9.4 GB available", now + 4);
+assert.equal(quotaBlocked.state, "blocked");
+assert.equal(quotaBlocked.next_retry_at, null, "quota-blocked uploads never enter automatic retry");
+assert.equal(quotaBlocked.last_error, "Not enough storage · 9.4 GB available");
+assert.equal(canStartUpload(quotaBlocked, [quotaBlocked], now + 5), false, "blocked uploads wait for an Owner retry");
+
+const expired = restartExpiredUpload({
+  ...upload,
+  media_id: "expired-media",
+  upload_id: "expired-upload",
+  chunk_size: 8,
+  retry_count: 3,
+  last_error: "Gone",
+}, now + 6);
+assert.equal(expired.state, "queued");
+assert.equal(expired.media_id, null);
+assert.equal(expired.upload_id, null);
+assert.equal(expired.chunk_size, null);
+assert.equal(expired.retry_count, 0);
+assert.equal(expired.last_error, null);
 
 const queuedPhoto = { ...upload, id: "photo-1", content_type: "image/jpeg" };
 const queuedVideo = { ...upload, id: "video-1", content_type: "video/mp4" };

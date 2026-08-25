@@ -8,6 +8,7 @@ import { videoDuration } from "../mediaMetadata";
 import { mediaTimestamp } from "../mediaTimestamp";
 import { recognizeVideo } from "../recognition";
 import type { Report, Show, UploadState } from "../types";
+import { formatStorageBytes, storageQuotaError, type StorageSnapshot } from "../storage";
 
 type QueueItem = {
   id: string;
@@ -42,7 +43,7 @@ function interruptedQueue(ownerId: string): QueueItem[] {
     });
 }
 
-export default function Uploader({ shows, onMediaComplete, report }: { shows: Show[]; onMediaComplete: () => void; report: Report }) {
+export default function Uploader({ shows, storage, onStorageChanged, onMediaComplete, report }: { shows: Show[]; storage: StorageSnapshot | null; onStorageChanged: () => void; onMediaComplete: () => void; report: Report }) {
   const { userId } = useAuth();
   const ownerId = userId ?? "signed-out";
   const [queue, setQueue] = useState<QueueItem[]>(() => interruptedQueue(ownerId));
@@ -105,6 +106,7 @@ export default function Uploader({ shows, onMediaComplete, report }: { shows: Sh
     });
     const state = normalizeUploadState(response);
     localStorage.setItem(fingerprint, JSON.stringify(state));
+    onStorageChanged();
     return { state, fingerprint };
   }
 
@@ -141,6 +143,7 @@ export default function Uploader({ shows, onMediaComplete, report }: { shows: Sh
       body: JSON.stringify({ parts: state.completed }),
     });
     localStorage.removeItem(fingerprint);
+    onStorageChanged();
     const status = completed.assignment?.method === "automatic"
       ? "Assigned automatically"
       : completed.assignment ? "Assigned" : "In Inbox";
@@ -169,6 +172,7 @@ export default function Uploader({ shows, onMediaComplete, report }: { shows: Sh
       return;
     }
     localStorage.removeItem(item.id);
+    onStorageChanged();
     setQueue(items => items.filter(candidate => candidate.id !== item.id));
   }
 
@@ -182,12 +186,36 @@ export default function Uploader({ shows, onMediaComplete, report }: { shows: Sh
       return;
     }
 
-    const entries = uniqueFiles.map(file => ({ file, queueId: fingerprintFor(file, ownerId) }));
+    const available = storage?.availableBytes ?? Number.POSITIVE_INFINITY;
+    let selectedBytes = 0;
+    const entries = uniqueFiles.map(file => {
+      const queueId = fingerprintFor(file, ownerId);
+      const hasReservation = Boolean(loadUploadState(localStorage.getItem(queueId)));
+      const canStart = hasReservation || selectedBytes + file.size <= available;
+      if (canStart && !hasReservation) selectedBytes += file.size;
+      return { file, queueId, canStart };
+    });
     setQueue(items => {
       const resumedIds = new Set(entries.map(entry => entry.queueId));
-      const activeItems = entries.map(({ file, queueId }) => ({ id: queueId, name: file.name, progress: 0, status: "Waiting", active: true, resumable: true }));
+      const activeItems = entries.map(({ file, queueId, canStart }) => ({
+        id: queueId,
+        name: file.name,
+        progress: 0,
+        status: canStart ? "Waiting" : `Not started — ${formatStorageBytes(Math.max(0, available - selectedBytes))} available`,
+        active: canStart,
+        resumable: canStart,
+      }));
       return [...activeItems, ...items.filter(item => !resumedIds.has(item.id))];
     });
+    const startableEntries = entries.filter(entry => entry.canStart);
+    const blockedEntries = entries.filter(entry => !entry.canStart);
+    if (blockedEntries.length) {
+      report(`${blockedEntries.length} ${blockedEntries.length === 1 ? "file was" : "files were"} not started because the batch exceeds available storage.`, true);
+    }
+    if (!startableEntries.length) {
+      if (input.current) input.current.value = "";
+      return;
+    }
     setUploading(true);
 
     let wakeLock: { release(): Promise<void> } | undefined;
@@ -197,14 +225,19 @@ export default function Uploader({ shows, onMediaComplete, report }: { shows: Sh
 
     let nextIndex = 0;
     const worker = async () => {
-      while (nextIndex < entries.length) {
-        const entry = entries[nextIndex++];
+      while (nextIndex < startableEntries.length) {
+        const entry = startableEntries[nextIndex++];
         try {
           await uploadFile(entry.file, entry.queueId, showId);
         } catch (error) {
           if (error instanceof ApiError && error.status === 409 && error.data.duplicate === true) {
             patch(entry.queueId, { status: "Duplicate — not uploaded", active: false, resumable: false });
             report(`${entry.file.name}: Duplicate video — not uploaded`, true);
+          } else if (error instanceof ApiError && storageQuotaError(error.data)) {
+            const detail = storageQuotaError(error.data)!;
+            patch(entry.queueId, { status: `Not started — ${detail.available} available`, active: false, resumable: false });
+            report(`${entry.file.name} needs ${detail.required}; ${detail.available} is available. Delete Media Items, then reselect it.`, true);
+            onStorageChanged();
           } else {
             patch(entry.queueId, { status: "Paused — reselect to resume", active: false, resumable: true });
             report(`${entry.file.name}: ${(error as Error).message}`, true);
@@ -212,17 +245,19 @@ export default function Uploader({ shows, onMediaComplete, report }: { shows: Sh
         }
       }
     };
-    await Promise.all(Array.from({ length: Math.min(2, entries.length) }, worker));
+    await Promise.all(Array.from({ length: Math.min(2, startableEntries.length) }, worker));
     await wakeLock?.release();
     if (input.current) input.current.value = "";
     setUploading(false);
   }
 
+  const uploadsUnavailable = storage !== null && storage.availableBytes <= 0;
+
   return <>
-    <label className={`flex min-h-44 flex-col items-start justify-between rounded-panel border p-5 transition md:min-h-48 md:p-6 ${uploading ? "cursor-wait opacity-60" : "cursor-pointer border-control bg-accentSoft active:opacity-80"}`}>
-      <input ref={input} className="hidden" type="file" accept="image/*,video/*" multiple disabled={uploading} onChange={event => void selected(event.target.files)} />
+    <label className={`mt-4 flex min-h-44 flex-col items-start justify-between rounded-panel border p-5 transition md:min-h-48 md:p-6 ${uploading || uploadsUnavailable ? "cursor-not-allowed opacity-60" : "cursor-pointer border-control bg-accentSoft active:opacity-80"}`}>
+      <input ref={input} className="hidden" type="file" accept="image/*,video/*" multiple disabled={uploading || uploadsUnavailable} onChange={event => void selected(event.target.files)} />
       <span className="grid h-12 w-12 place-items-center rounded-control bg-blue text-accentInk"><ImagePlus size={22} /></span>
-      <span><strong className="block font-display text-2xl leading-tight">{uploading ? "Uploading" : "Choose photos or videos"}</strong><small className="mt-2 block max-w-lg text-sm text-muted">Completed items appear in your Library immediately. Interrupted files resume when reselected.</small></span>
+      <span><strong className="block font-display text-2xl leading-tight">{uploading ? "Uploading" : uploadsUnavailable ? "Uploads paused" : "Choose photos or videos"}</strong><small className="mt-2 block max-w-lg text-sm text-muted">{uploadsUnavailable ? "Delete Media Items to make room. Everything already in your Library stays available." : "Completed items appear in your Library immediately. Interrupted files resume when reselected."}</small></span>
     </label>
 
     <label className="mt-4 block">Assign uploads to

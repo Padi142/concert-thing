@@ -66,5 +66,15 @@
   .error-line { @apply my-3 max-w-md border-l-2 border-danger py-2 pl-3 pr-2 text-[15px] leading-snug text-danger; }
   .media-tile { @apply relative aspect-square w-full overflow-hidden rounded-tile bg-placeholder; }
   .sheet-scrim { background: var(--scrim-strong); }
+  .storage-meter { @apply relative overflow-hidden rounded-panel border border-control bg-surface p-4; }
+  .storage-meter::after { content: ""; @apply pointer-events-none absolute inset-x-0 top-0 h-px bg-blue; opacity: .7; }
+  .storage-meter-loading { @apply flex min-h-24 items-center gap-2 text-sm text-muted; }
+  .storage-meter-over { @apply border-danger; }
+  .storage-meter-over::after { @apply bg-danger; }
+  .storage-meter-icon { @apply grid h-9 w-9 shrink-0 place-items-center rounded-control bg-accentSoft text-blue; }
+  .storage-meter-track { @apply relative mt-4 h-2 overflow-hidden rounded-full bg-line; }
+  .storage-meter-used, .storage-meter-reserved { @apply absolute inset-y-0; }
+  .storage-meter-used { @apply left-0 bg-blue; }
+  .storage-meter-reserved { background: repeating-linear-gradient(135deg, var(--c-accent) 0 3px, transparent 3px 6px); opacity: .72; }
 }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } * { transition: none !important; } }

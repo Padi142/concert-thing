@@ -80,7 +80,7 @@ async function videoShareRow(env: Env, mediaId: string, ownerId: string): Promis
   return env.DB.prepare(`
     SELECT id,public_token
     FROM media_items
-    WHERE id = ? AND owner_id = ? AND media_type = 'video' AND status = 'ready'
+    WHERE id = ? AND owner_id = ? AND media_type = 'video' AND status = 'ready' AND deletion_started_at IS NULL
   `).bind(mediaId, ownerId).first<VideoShareRow>();
 }
 
@@ -97,7 +97,7 @@ export async function createVideoShare(request: Request, env: Env, mediaId: stri
     let created = false;
     for (let attempt = 0; attempt < 5 && !created; attempt += 1) {
       try {
-        const result = await env.DB.prepare("UPDATE media_items SET public_token = ? WHERE id = ? AND owner_id = ? AND media_type = 'video' AND status = 'ready' AND public_token IS NULL")
+        const result = await env.DB.prepare("UPDATE media_items SET public_token = ? WHERE id = ? AND owner_id = ? AND media_type = 'video' AND status = 'ready' AND deletion_started_at IS NULL AND public_token IS NULL")
           .bind(createPublicToken(), mediaId, auth.userId).run();
         created = result.meta.changes > 0;
       } catch (error) {
@@ -168,7 +168,7 @@ export async function getPublicShow(request: Request, env: Env, token: string): 
       SELECT m.id,m.original_name,m.content_type,m.byte_size,m.duration_ms,m.captured_at,m.created_at,m.stream_uid,m.stream_status
       FROM media_items m
       JOIN shows owner_show ON owner_show.id = m.show_id AND owner_show.owner_id IS m.owner_id
-      WHERE m.show_id = ? AND m.media_type = 'video' AND m.status = 'ready'
+      WHERE m.show_id = ? AND m.media_type = 'video' AND m.status = 'ready' AND m.deletion_started_at IS NULL
       ORDER BY CASE WHEN m.captured_at IS NULL THEN 1 ELSE 0 END, m.captured_at, m.created_at
     `).bind(show.id).all<PublicVideoRow>(),
     env.DB.prepare(`
@@ -180,7 +180,7 @@ export async function getPublicShow(request: Request, env: Env, token: string): 
       JOIN shows owner_show ON owner_show.id = m.show_id AND owner_show.owner_id IS m.owner_id
       LEFT JOIN songs s ON s.id = sm.song_id
       WHERE m.show_id = ? AND m.owner_id IS (SELECT owner_id FROM shows WHERE id = ?)
-        AND m.media_type = 'video' AND m.status = 'ready'
+        AND m.media_type = 'video' AND m.status = 'ready' AND m.deletion_started_at IS NULL
         AND sm.review_state != 'rejected'
         AND COALESCE(sm.owner_title,s.title,sm.candidate_title) IS NOT NULL
       ORDER BY sm.media_id,sm.start_ms
@@ -238,7 +238,7 @@ export async function servePublicVideo(request: Request, env: Env, token: string
   const video = await env.DB.prepare(`
     SELECT id,owner_id
     FROM media_items
-    WHERE public_token = ? AND media_type = 'video' AND status = 'ready'
+    WHERE public_token = ? AND media_type = 'video' AND status = 'ready' AND deletion_started_at IS NULL
   `).bind(token).first<{ id: string; owner_id: string | null }>();
   if (!video) throw new HttpError(404, "Public video not found");
   return serveMedia(request, env, video.id, {

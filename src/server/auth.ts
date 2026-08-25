@@ -1,6 +1,7 @@
 import { verifyToken } from "@clerk/backend";
 import type { Env } from "./env";
 import { HttpError, json } from "./http";
+import { ownerStorageInitializationStatement } from "./storage";
 
 /** The only tenant identity accepted by private archive operations. */
 export type AuthContext = {
@@ -79,6 +80,7 @@ export async function claimLegacyData(env: Env, auth: AuthContext): Promise<Resp
       claimStatement,
       env.DB.prepare("UPDATE shows SET owner_id = ? WHERE owner_id IS NULL AND EXISTS (SELECT 1 FROM archive_legacy_claim WHERE id = 1 AND user_id = ?)").bind(auth.userId, auth.userId),
       env.DB.prepare("UPDATE media_items SET owner_id = ? WHERE owner_id IS NULL AND EXISTS (SELECT 1 FROM archive_legacy_claim WHERE id = 1 AND user_id = ?)").bind(auth.userId, auth.userId),
+      ownerStorageInitializationStatement(env.DB, auth.userId, now),
     ]);
   } catch (error) {
     // A concurrent first claim can win the single-row constraint. Treat that

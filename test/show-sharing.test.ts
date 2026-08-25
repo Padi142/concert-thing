@@ -66,6 +66,7 @@ for (const migration of [
   "0007_short_public_links.sql",
   "0008_clerk_tenancy.sql",
   "0009_public_video_sharing.sql",
+  "0010_storage_quota.sql",
 ]) database.exec(readFileSync(`migrations/${migration}`, "utf8"));
 
 database.prepare(`INSERT INTO shows (id,title,venue,locality,starts_at,ends_at,timezone,created_at)

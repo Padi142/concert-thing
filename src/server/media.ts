@@ -1,6 +1,13 @@
 import type { Env } from "./env";
 import type { AuthContext } from "./auth";
 import { body, HttpError, json, text } from "./http";
+import {
+  UPLOAD_RETENTION_MS,
+  StorageQuotaExceeded,
+  reconcileStorage,
+  releaseUnpersistedStorage,
+  reserveStorage,
+} from "./storage";
 export async function listMedia(request: Request, env: Env, auth: AuthContext): Promise<Response> {
   const query = new URL(request.url).searchParams.get("q")?.trim() ?? "";
   const pattern = `%${query.replace(/[\\%_]/g, "\\$&")}%`;
@@ -9,7 +16,7 @@ export async function listMedia(request: Request, env: Env, auth: AuthContext): 
       m.captured_at, m.captured_at_source, m.status, m.stream_status, m.show_id, m.assignment_method, m.created_at,
       s.title AS show_title
     FROM media_items m LEFT JOIN shows s ON s.id = m.show_id AND s.owner_id = m.owner_id
-    WHERE m.owner_id = ? AND m.status != 'uploading' AND (? = '' OR EXISTS (
+    WHERE m.owner_id = ? AND m.status = 'ready' AND m.deletion_started_at IS NULL AND (? = '' OR EXISTS (
       SELECT 1 FROM song_matches sm JOIN songs song ON song.id = sm.song_id
       WHERE sm.media_id = m.id AND sm.review_state IN ('confirmed', 'edited', 'manual')
         AND (song.title LIKE ? ESCAPE '\\' OR song.primary_artist LIKE ? ESCAPE '\\')
@@ -39,6 +46,7 @@ type ExistingClientUpload = {
   content_type: string;
   byte_size: number;
   content_hash: string | null;
+  deletion_started_at: string | null;
 };
 
 function uploadStartResponse(upload: ExistingClientUpload, status = 200): Response {
@@ -53,7 +61,7 @@ function uploadStartResponse(upload: ExistingClientUpload, status = 200): Respon
 
 async function uploadByClientId(clientUploadId: string, env: Env, ownerId: string): Promise<ExistingClientUpload | null> {
   return env.DB.prepare(`
-    SELECT id,upload_id,status,original_name,content_type,byte_size,content_hash
+    SELECT id,upload_id,status,original_name,content_type,byte_size,content_hash,deletion_started_at
     FROM media_items WHERE owner_id = ? AND client_upload_id = ?
   `).bind(ownerId, clientUploadId).first<ExistingClientUpload>();
 }
@@ -76,7 +84,8 @@ export async function beginUpload(request: Request, env: Env, auth: AuthContext)
   async function duplicateResponse(excludeMediaId: string | null = null) {
     const duplicate = await env.DB.prepare(`
       SELECT id FROM media_items
-      WHERE owner_id = ? AND content_hash = ? AND status IN ('uploading', 'ready')
+      WHERE owner_id = ? AND content_hash = ?
+        AND (status = 'uploading' OR (status = 'ready' AND deletion_started_at IS NULL))
         AND (? IS NULL OR id != ?)
       LIMIT 1
     `).bind(auth.userId, contentHash, excludeMediaId, excludeMediaId).first<{ id: string }>();
@@ -94,6 +103,7 @@ export async function beginUpload(request: Request, env: Env, auth: AuthContext)
       if (existing.status !== "uploading" && existing.status !== "ready") {
         throw new HttpError(409, "The previous upload cannot be resumed");
       }
+      if (existing.deletion_started_at) throw new HttpError(409, "The Media Item is being deleted");
       if (existing.content_hash && existing.content_hash !== contentHash) {
         throw new HttpError(409, "clientUploadId already belongs to different video bytes");
       }
@@ -115,14 +125,50 @@ export async function beginUpload(request: Request, env: Env, auth: AuthContext)
   if (duplicate) return duplicate;
   const id = crypto.randomUUID();
   const key = `originals/${auth.userId}/${id}/${safeName(originalName)}`;
-  const upload = await env.MEDIA.createMultipartUpload(key, { httpMetadata: { contentType } });
+  try {
+    await reserveStorage(env.DB, auth.userId, byteSize);
+  } catch (error) {
+    if (error instanceof StorageQuotaExceeded) {
+      throw new HttpError(409, error.message, {
+        code: "STORAGE_QUOTA_EXCEEDED",
+        requiredBytes: error.requiredBytes,
+        availableBytes: error.storage.availableBytes,
+        storage: error.storage,
+      });
+    }
+    throw error;
+  }
+
+  let upload: R2MultipartUpload;
+  try {
+    upload = await env.MEDIA.createMultipartUpload(key, { httpMetadata: { contentType } });
+  } catch (error) {
+    await releaseUnpersistedStorage(env.DB, auth.userId, byteSize).catch(() => undefined);
+    throw error;
+  }
   try {
     await env.DB.prepare(`
-      INSERT INTO media_items (id,object_key,original_name,media_type,content_type,byte_size,status,upload_id,client_upload_id,content_hash,created_at,owner_id)
-      VALUES (?,?,?,?,?,?,'uploading',?,?,?,?,?)
-    `).bind(id, key, originalName, mediaType, contentType, byteSize, upload.uploadId, clientUploadId, contentHash, new Date().toISOString(), auth.userId).run();
+      INSERT INTO media_items (
+        id,object_key,original_name,media_type,content_type,byte_size,status,
+        upload_id,client_upload_id,content_hash,created_at,owner_id,upload_activity_at
+      ) VALUES (?,?,?,?,?,?,'uploading',?,?,?,?,?,?)
+    `).bind(
+      id,
+      key,
+      originalName,
+      mediaType,
+      contentType,
+      byteSize,
+      upload.uploadId,
+      clientUploadId,
+      contentHash,
+      new Date().toISOString(),
+      auth.userId,
+      new Date().toISOString(),
+    ).run();
   } catch (error) {
     await upload.abort().catch(() => undefined);
+    await releaseUnpersistedStorage(env.DB, auth.userId, byteSize).catch(() => undefined);
     if (clientUploadId) {
       const existing = await uploadByClientId(clientUploadId, env, auth.userId);
       if (existing && existing.original_name === originalName && existing.content_type === contentType && existing.byte_size === byteSize) {
@@ -133,28 +179,44 @@ export async function beginUpload(request: Request, env: Env, auth: AuthContext)
     if (duplicateAfterRace) return duplicateAfterRace;
     throw error;
   }
-  return uploadStartResponse({ id, upload_id: upload.uploadId, status: "uploading", original_name: originalName, content_type: contentType, byte_size: byteSize, content_hash: contentHash }, 201);
+  return uploadStartResponse({ id, upload_id: upload.uploadId, status: "uploading", original_name: originalName, content_type: contentType, byte_size: byteSize, content_hash: contentHash, deletion_started_at: null }, 201);
 }
 
 type UploadRow = {
+  id: string;
   object_key: string;
   upload_id: string | null;
   status: string;
+  byte_size: number;
+  deletion_started_at: string | null;
   captured_at: string | null;
   show_id: string | null;
   assignment_method: string | null;
 };
 
+async function throwIfExpiredUpload(id: string, env: Env, auth: AuthContext): Promise<never | void> {
+  const expired = await env.DB.prepare(
+    "SELECT media_id FROM upload_expirations WHERE media_id = ? AND owner_id = ?",
+  ).bind(id, auth.userId).first<{ media_id: string }>();
+  if (expired) throw new HttpError(410, "Upload expired; start it again", { code: "UPLOAD_EXPIRED" });
+}
+
 async function uploadRow(id: string, env: Env, auth: AuthContext): Promise<UploadRow> {
-  const row = await env.DB.prepare("SELECT object_key,upload_id,status,captured_at,show_id,assignment_method FROM media_items WHERE id = ? AND owner_id = ?").bind(id, auth.userId).first<UploadRow>();
-  if (!row) throw new HttpError(404, "Media Item not found");
+  const row = await env.DB.prepare(`
+    SELECT id,object_key,upload_id,status,byte_size,deletion_started_at,captured_at,show_id,assignment_method
+    FROM media_items WHERE id = ? AND owner_id = ?
+  `).bind(id, auth.userId).first<UploadRow>();
+  if (!row) {
+    await throwIfExpiredUpload(id, env, auth);
+    throw new HttpError(404, "Media Item not found");
+  }
   return row;
 }
 
 async function requireActiveUpload(id: string, env: Env, auth: AuthContext): Promise<UploadRow & { upload_id: string }> {
   const row = await uploadRow(id, env, auth);
   if (row.status !== "uploading" || !row.upload_id) throw new HttpError(409, "Media Item is not being uploaded");
-  return row as UploadRow & { upload_id: string };
+  return { ...row, upload_id: row.upload_id };
 }
 
 export async function uploadStatus(env: Env, mediaId: string, auth: AuthContext): Promise<Response> {
@@ -162,7 +224,10 @@ export async function uploadStatus(env: Env, mediaId: string, auth: AuthContext)
     SELECT id,upload_id,status,show_id,assignment_method
     FROM media_items WHERE id = ? AND owner_id = ?
   `).bind(mediaId, auth.userId).first<{ id: string; upload_id: string | null; status: string; show_id: string | null; assignment_method: string | null }>();
-  if (!row) throw new HttpError(404, "Media Item not found");
+  if (!row) {
+    await throwIfExpiredUpload(mediaId, env, auth);
+    throw new HttpError(404, "Media Item not found");
+  }
   return json({
     mediaId: row.id,
     uploadId: row.upload_id,
@@ -183,19 +248,26 @@ export async function configureUpload(request: Request, env: Env, mediaId: strin
   const showId = input.showId === null || input.showId === undefined ? null : text(input.showId, "showId");
   if (showId && !await env.DB.prepare("SELECT id FROM shows WHERE id = ? AND owner_id = ?").bind(showId, auth.userId).first()) throw new HttpError(404, "Show not found");
   const result = await env.DB.prepare(`
-    UPDATE media_items SET captured_at = ?, captured_at_source = ?, duration_ms = ?, show_id = ?, assignment_method = ?
+    UPDATE media_items SET captured_at = ?, captured_at_source = ?, duration_ms = ?, show_id = ?, assignment_method = ?, upload_activity_at = ?
     WHERE id = ? AND owner_id = ? AND status = 'uploading'
-  `).bind(capturedAt, capturedAtSource, durationMs, showId, showId ? "owner" : null, mediaId, auth.userId).run();
+  `).bind(capturedAt, capturedAtSource, durationMs, showId, showId ? "owner" : null, new Date().toISOString(), mediaId, auth.userId).run();
   if (!result.meta.changes) {
     const existing = await uploadRow(mediaId, env, auth);
-    if (existing.status === "ready") return json({ id: mediaId, status: "ready" });
+    if (existing.status === "ready" && !existing.deletion_started_at) return json({ id: mediaId, status: "ready" });
     throw new HttpError(404, "Active upload not found");
   }
   return json({ id: mediaId, capturedAt, showId });
 }
 
 export async function cancelUpload(env: Env, mediaId: string, auth: AuthContext): Promise<Response> {
-  const row = await requireActiveUpload(mediaId, env, auth);
+  const row = await env.DB.prepare(`
+    SELECT id,object_key,upload_id,status,byte_size,deletion_started_at,captured_at,show_id,assignment_method
+    FROM media_items WHERE id = ? AND owner_id = ?
+  `).bind(mediaId, auth.userId).first<UploadRow>();
+  if (!row) return new Response(null, { status: 204 });
+  if (row.status !== "uploading" || !row.upload_id) {
+    throw new HttpError(409, "Media Item is not being uploaded");
+  }
   await env.MEDIA.resumeMultipartUpload(row.object_key, row.upload_id).abort();
   await env.DB.prepare("DELETE FROM media_items WHERE id = ? AND owner_id = ? AND status = 'uploading'").bind(mediaId, auth.userId).run();
   return new Response(null, { status: 204 });
@@ -206,6 +278,9 @@ export async function uploadPart(request: Request, env: Env, mediaId: string, pa
   if (!request.body) throw new HttpError(400, "Part body is required");
   const row = await requireActiveUpload(mediaId, env, auth);
   const part = await env.MEDIA.resumeMultipartUpload(row.object_key, row.upload_id).uploadPart(partNumber, request.body);
+  await env.DB.prepare(
+    "UPDATE media_items SET upload_activity_at = ? WHERE id = ? AND owner_id = ? AND status = 'uploading'",
+  ).bind(new Date().toISOString(), mediaId, auth.userId).run();
   return json({ partNumber: part.partNumber, etag: part.etag });
 }
 
@@ -222,9 +297,40 @@ export async function completeUpload(request: Request, env: Env, mediaId: string
   }).sort((a, b) => a.partNumber - b.partNumber);
   let row = await uploadRow(mediaId, env, auth);
   if (row.status === "uploading" && row.upload_id) {
-    const objectAlreadyCompleted = await env.MEDIA.head(row.object_key);
-    if (!objectAlreadyCompleted) await env.MEDIA.resumeMultipartUpload(row.object_key, row.upload_id).complete(parts);
-    await env.DB.prepare("UPDATE media_items SET status = 'ready', upload_id = NULL WHERE id = ? AND owner_id = ?").bind(mediaId, auth.userId).run();
+    let object = await env.MEDIA.head(row.object_key);
+    if (!object) {
+      await env.MEDIA.resumeMultipartUpload(row.object_key, row.upload_id).complete(parts);
+      object = await env.MEDIA.head(row.object_key);
+    }
+    if (!object) throw new HttpError(502, "The completed original could not be verified");
+    if (object.size !== row.byte_size) {
+      try {
+        await deleteOriginalAndConfirm(env.MEDIA, row.object_key);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "The invalid original could not be removed";
+        await Promise.resolve(env.DB.prepare(
+          "UPDATE media_items SET deletion_error = ? WHERE id = ? AND owner_id = ? AND status = 'uploading'",
+        ).bind(message, mediaId, auth.userId).run()).catch(() => undefined);
+        throw new HttpError(502, "The completed original has the wrong size and could not be removed", {
+          code: "UPLOAD_SIZE_MISMATCH",
+          declaredBytes: row.byte_size,
+          actualBytes: object.size,
+        });
+      }
+      await env.DB.prepare(
+        "DELETE FROM media_items WHERE id = ? AND owner_id = ? AND status = 'uploading'",
+      ).bind(mediaId, auth.userId).run();
+      throw new HttpError(422, "The uploaded original size does not match its declaration", {
+        code: "UPLOAD_SIZE_MISMATCH",
+        declaredBytes: row.byte_size,
+        actualBytes: object.size,
+      });
+    }
+    await env.DB.prepare(`
+      UPDATE media_items
+      SET status = 'ready', upload_id = NULL, upload_activity_at = ?
+      WHERE id = ? AND owner_id = ? AND status = 'uploading'
+    `).bind(new Date().toISOString(), mediaId, auth.userId).run();
     row = await uploadRow(mediaId, env, auth);
   }
   if (row.status !== "ready") throw new HttpError(409, "Media Item cannot be completed");
@@ -252,24 +358,45 @@ export async function assignMedia(request: Request, env: Env, mediaId: string, a
     const show = await env.DB.prepare("SELECT id FROM shows WHERE id = ? AND owner_id = ?").bind(showId, auth.userId).first();
     if (!show) throw new HttpError(404, "Show not found");
   }
-  const result = await env.DB.prepare("UPDATE media_items SET show_id = ?, assignment_method = 'owner' WHERE id = ? AND owner_id = ? AND status = 'ready'").bind(showId, mediaId, auth.userId).run();
+  const result = await env.DB.prepare("UPDATE media_items SET show_id = ?, assignment_method = 'owner' WHERE id = ? AND owner_id = ? AND status = 'ready' AND deletion_started_at IS NULL").bind(showId, mediaId, auth.userId).run();
   if (!result.meta.changes) throw new HttpError(404, "Ready Media Item not found");
   return json({ id: mediaId, showId });
 }
 
 export async function deleteMedia(env: Env, mediaId: string, auth: AuthContext): Promise<Response> {
-  const media = await env.DB.prepare(`
-    SELECT object_key,status,stream_uid FROM media_items
+  let media = await env.DB.prepare(`
+    SELECT object_key,status,stream_uid,deletion_started_at FROM media_items
     WHERE id = ? AND owner_id = ? AND status = 'ready'
-  `).bind(mediaId, auth.userId).first<{ object_key: string; status: string; stream_uid: string | null }>();
-  if (!media) throw new HttpError(404, "Ready Media Item not found");
-  await Promise.all([
-    env.MEDIA.delete(media.object_key),
-    media.stream_uid ? env.STREAM.video(media.stream_uid).delete() : Promise.resolve(),
-  ]);
-  const result = await env.DB.prepare("DELETE FROM media_items WHERE id = ? AND owner_id = ? AND status = 'ready'").bind(mediaId, auth.userId).run();
-  if (!result.meta.changes) throw new HttpError(409, "Media Item changed while it was being deleted");
-  return json({ id: mediaId, deleted: true });
+  `).bind(mediaId, auth.userId).first<{ object_key: string; status: string; stream_uid: string | null; deletion_started_at: string | null }>();
+  if (!media) return json({ id: mediaId, status: "deleted", deleted: true });
+
+  if (!media.deletion_started_at) {
+    await env.DB.prepare(`
+      UPDATE media_items
+      SET deletion_started_at = ?, deletion_error = NULL
+      WHERE id = ? AND owner_id = ? AND status = 'ready' AND deletion_started_at IS NULL
+    `).bind(new Date().toISOString(), mediaId, auth.userId).run();
+    const deleting = await env.DB.prepare(`
+      SELECT object_key,status,stream_uid,deletion_started_at FROM media_items
+      WHERE id = ? AND owner_id = ? AND status = 'ready' AND deletion_started_at IS NOT NULL
+    `).bind(mediaId, auth.userId).first<{ object_key: string; status: string; stream_uid: string | null; deletion_started_at: string | null }>();
+    if (!deleting) throw new HttpError(404, "Media Item not found");
+    media = deleting;
+  }
+
+  try {
+    await deleteOriginalAndConfirm(env.MEDIA, media.object_key);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "The original could not be deleted";
+    await Promise.resolve(env.DB.prepare(
+      "UPDATE media_items SET deletion_error = ? WHERE id = ? AND owner_id = ? AND status = 'ready' AND deletion_started_at IS NOT NULL",
+    ).bind(message, mediaId, auth.userId).run()).catch(() => undefined);
+    return json({ id: mediaId, status: "deleting", deleted: false }, 202);
+  }
+
+  await finalizeDeletingMedia(env, mediaId, auth.userId, media.stream_uid);
+  if (media.stream_uid) await cleanupStream(env, media.stream_uid);
+  return json({ id: mediaId, status: "deleted", deleted: true });
 }
 
 export function parseRange(value: string | null, size: number): { offset: number; length: number } | null {
@@ -300,7 +427,7 @@ export type ServeMediaOptions = {
 };
 
 export async function serveMedia(request: Request, env: Env, mediaId: string, options: ServeMediaOptions = {}): Promise<Response> {
-  const conditions = ["id = ?", "status = 'ready'"];
+  const conditions = ["id = ?", "status = 'ready'", "deletion_started_at IS NULL"];
   const values: unknown[] = [mediaId];
   if (options.ownerId !== undefined) {
     conditions.push("owner_id IS ?");
@@ -341,7 +468,7 @@ function streamSourceToken(): string {
 }
 
 export async function importMediaToStream(request: Request, env: Env, mediaId: string, auth?: AuthContext, options: { showId?: string; ownerId?: string | null } = {}): Promise<Response> {
-  const conditions = ["id = ?", "status = 'ready'"];
+  const conditions = ["id = ?", "status = 'ready'", "deletion_started_at IS NULL"];
   const values: unknown[] = [mediaId];
   if (auth) {
     conditions.push("owner_id = ?");
@@ -399,7 +526,7 @@ export type StreamPlaybackInfo = {
 };
 
 export async function getStreamPlaybackInfo(env: Env, mediaId: string, options: { ownerId?: string | null; showId?: string } = {}): Promise<StreamPlaybackInfo> {
-  const conditions = ["id = ?", "media_type = 'video'", "status = 'ready'"];
+  const conditions = ["id = ?", "media_type = 'video'", "status = 'ready'", "deletion_started_at IS NULL"];
   const values: unknown[] = [mediaId];
   if (options.ownerId !== undefined) {
     conditions.push("owner_id IS ?");
@@ -443,8 +570,129 @@ export async function streamPlayback(env: Env, mediaId: string, auth: AuthContex
 export async function serveStreamSource(request: Request, env: Env, token: string): Promise<Response> {
   if (!/^[a-f0-9]{64}$/.test(token)) throw new HttpError(404, "Stream source not found");
   const source = await env.DB.prepare(`
-    SELECT id FROM media_items WHERE stream_source_token = ? AND stream_status NOT IN ('ready','error')
+    SELECT id FROM media_items
+    WHERE stream_source_token = ? AND stream_status NOT IN ('ready','error')
+      AND deletion_started_at IS NULL
   `).bind(token).first<{ id: string }>();
   if (!source) throw new HttpError(404, "Stream source not found");
   return serveMedia(request, env, source.id);
+}
+
+async function deleteOriginalAndConfirm(bucket: R2Bucket, objectKey: string): Promise<void> {
+  await bucket.delete(objectKey);
+  const remaining = await bucket.head(objectKey);
+  if (remaining) throw new Error("R2 still contains the original after deletion");
+}
+
+async function finalizeDeletingMedia(
+  env: Env,
+  mediaId: string,
+  ownerId: string,
+  streamUid: string | null,
+): Promise<boolean> {
+  const now = new Date().toISOString();
+  const statements: D1PreparedStatement[] = [];
+  if (streamUid) {
+    statements.push(env.DB.prepare(`
+      INSERT INTO stream_cleanup (stream_uid, media_id, created_at)
+      SELECT ?, ?, ?
+      WHERE EXISTS (
+      SELECT 1 FROM media_items
+        WHERE id = ? AND owner_id = ? AND status = 'ready' AND deletion_started_at IS NOT NULL
+      )
+      ON CONFLICT(stream_uid) DO NOTHING
+    `).bind(streamUid, mediaId, now, mediaId, ownerId));
+  }
+  statements.push(env.DB.prepare(
+    "DELETE FROM media_items WHERE id = ? AND owner_id = ? AND status = 'ready' AND deletion_started_at IS NOT NULL",
+  ).bind(mediaId, ownerId));
+  const result = await env.DB.batch(statements);
+  const deletionResult = result[result.length - 1];
+  return Boolean(deletionResult && Number(deletionResult.meta.changes ?? 0) > 0);
+}
+
+async function cleanupStream(env: Env, streamUid: string): Promise<void> {
+  try {
+    await env.STREAM.video(streamUid).delete();
+    await env.DB.prepare("DELETE FROM stream_cleanup WHERE stream_uid = ?").bind(streamUid).run();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Cloudflare Stream cleanup failed";
+    await Promise.resolve(env.DB.prepare(`
+      UPDATE stream_cleanup
+      SET attempts = attempts + 1, last_error = ?
+      WHERE stream_uid = ?
+    `).bind(message, streamUid).run()).catch(() => undefined);
+  }
+}
+
+async function expireInactiveUploads(env: Env, now: string): Promise<void> {
+  const cutoff = new Date(Date.parse(now) - UPLOAD_RETENTION_MS).toISOString();
+  const uploads = await env.DB.prepare(`
+    SELECT id, owner_id, object_key, upload_id
+    FROM media_items
+    WHERE status = 'uploading'
+      AND (upload_activity_at IS NULL OR upload_activity_at < ?)
+    ORDER BY upload_activity_at ASC
+    LIMIT 100
+  `).bind(cutoff).all<{ id: string; owner_id: string; object_key: string; upload_id: string | null }>();
+  for (const upload of uploads.results) {
+    if (upload.upload_id) {
+      try {
+        await env.MEDIA.resumeMultipartUpload(upload.object_key, upload.upload_id).abort();
+      } catch {
+        continue;
+      }
+    }
+    await env.DB.batch([
+      env.DB.prepare(`
+        INSERT INTO upload_expirations (media_id, owner_id, expired_at)
+        SELECT ?, ?, ?
+        WHERE EXISTS (
+          SELECT 1 FROM media_items
+          WHERE id = ? AND owner_id = ? AND status = 'uploading'
+        )
+        ON CONFLICT(media_id) DO UPDATE SET expired_at = excluded.expired_at
+      `).bind(upload.id, upload.owner_id, now, upload.id, upload.owner_id),
+      env.DB.prepare(
+        "DELETE FROM media_items WHERE id = ? AND owner_id = ? AND status = 'uploading'",
+      ).bind(upload.id, upload.owner_id),
+    ]);
+  }
+}
+
+async function retryDeletingMedia(env: Env): Promise<void> {
+  const deleting = await env.DB.prepare(`
+    SELECT id, owner_id, object_key, stream_uid
+    FROM media_items
+    WHERE status = 'ready' AND deletion_started_at IS NOT NULL
+    ORDER BY deletion_started_at ASC
+    LIMIT 100
+  `).all<{ id: string; owner_id: string; object_key: string; stream_uid: string | null }>();
+  for (const media of deleting.results) {
+    try {
+      await deleteOriginalAndConfirm(env.MEDIA, media.object_key);
+      await finalizeDeletingMedia(env, media.id, media.owner_id, media.stream_uid);
+      if (media.stream_uid) await cleanupStream(env, media.stream_uid);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Original deletion retry failed";
+      await Promise.resolve(env.DB.prepare(
+        "UPDATE media_items SET deletion_error = ? WHERE id = ? AND status = 'ready' AND deletion_started_at IS NOT NULL",
+      ).bind(message, media.id).run()).catch(() => undefined);
+    }
+  }
+}
+
+async function retryStreamCleanup(env: Env): Promise<void> {
+  const pending = await env.DB.prepare(
+    "SELECT stream_uid FROM stream_cleanup ORDER BY created_at ASC LIMIT 100",
+  ).all<{ stream_uid: string }>();
+  for (const row of pending.results) await cleanupStream(env, row.stream_uid);
+}
+
+/** Scheduled cleanup for abandoned uploads, deleting originals, and drift. */
+export async function runStorageMaintenance(env: Env, at = new Date().toISOString()): Promise<void> {
+  await expireInactiveUploads(env, at);
+  await retryDeletingMedia(env);
+  await retryStreamCleanup(env);
+  await reconcileStorage(env.DB, at);
 }

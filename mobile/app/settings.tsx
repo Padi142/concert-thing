@@ -10,6 +10,8 @@ import { AccountControl } from "../src/components/AccountControl";
 import { useThemeTokens } from "../src/theme/tokens";
 import { Hairline, PrimaryButton } from "../src/components/ui";
 import { Dialog, useDialog } from "../src/components/Dialog";
+import { StorageMeter } from "../src/components/StorageMeter";
+import { useStorage } from "../src/hooks/useStorage";
 
 export default function SettingsScreen() {
   const tokens = useThemeTokens();
@@ -21,6 +23,7 @@ export default function SettingsScreen() {
   const [autoPreferenceLoaded, setAutoPreferenceLoaded] = useState(false);
   const [savingAutoRecognize, setSavingAutoRecognize] = useState(false);
   const dialog = useDialog();
+  const { storage, loading: storageLoading } = useStorage();
   useEffect(() => {
     void loadApiConfig().then((config) => { if (config) setBaseUrl(config.baseUrl); });
     void loadAutoRecognition().then(setAutoRecognize).finally(() => setAutoPreferenceLoaded(true));
@@ -61,6 +64,8 @@ export default function SettingsScreen() {
       <View className="mb-5 flex-row items-center px-5"><Pressable accessibilityRole="button" accessibilityLabel="Close settings" onPress={() => router.back()} className="mr-3 h-12 w-12 items-center justify-center"><Ionicons name="close" size={25} color={tokens.colors.ink} /></Pressable><View><Text className="font-sans text-[12px] font-semibold uppercase tracking-[1.2px] text-muted">Private connection</Text><Text className="font-display text-[28px] text-ink">Settings</Text></View></View>
       <Hairline className="mb-6" />
       <View className="px-5"><Text className="mb-2 font-sans text-[13px] font-semibold uppercase tracking-[1px] text-muted">Archive URL</Text><TextInput accessibilityLabel="Archive URL" value={baseUrl} onChangeText={setBaseUrl} autoCapitalize="none" autoCorrect={false} keyboardType="url" placeholder={DEFAULT_API_URL} placeholderTextColor={tokens.colors.subtle} className="mb-3 min-h-12 rounded-[10px] border border-control bg-surface px-3 font-sans text-[16px] text-ink" /><Text className="mb-6 font-sans text-[14px] leading-5 text-muted">The default service is already configured. Clerk refreshes a short-lived session token for each authenticated request; no permanent owner token is stored on this device.</Text><PrimaryButton onPress={() => void save()} disabled={busy || !baseUrl.trim()}>{busy ? "Checking…" : "Save and connect"}</PrimaryButton><Pressable accessibilityRole="button" accessibilityLabel="Reset archive URL" onPress={() => void clear()} className="mt-5 min-h-12 items-center justify-center"><Text className="font-sans text-[16px] font-semibold text-danger">Reset archive URL</Text></Pressable></View>
+      <Hairline className="mx-5 my-6" />
+      <View><Text className="mb-3 px-5 font-sans text-[13px] font-semibold uppercase tracking-[1px] text-muted">Storage allowance</Text><StorageMeter storage={storage} loading={storageLoading} /></View>
       <Hairline className="mx-5 my-6" />
       <View className="px-5"><Text className="mb-3 font-sans text-[13px] font-semibold uppercase tracking-[1px] text-muted">Your account</Text><View className="rounded-[12px] border border-control bg-surface px-3 py-3"><AccountControl withLabel /></View><Pressable accessibilityRole="button" accessibilityLabel="Sign out" onPress={() => void clerk.signOut()} className="mt-3 min-h-12 items-center justify-center"><Text className="font-sans text-[16px] font-semibold text-danger">Sign out</Text></Pressable></View>
       <Hairline className="mx-5 my-6" />

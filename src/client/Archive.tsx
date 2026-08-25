@@ -10,6 +10,8 @@ import ShowList from "./components/ShowList";
 import ShowRecognition from "./components/ShowRecognition";
 import ShowShare from "./components/ShowShare";
 import Uploader from "./components/Uploader";
+import StorageMeter from "./components/StorageMeter";
+import type { StorageSnapshot } from "./storage";
 
 type View = { name: ViewName } | { name: "show"; id: string };
 
@@ -51,17 +53,28 @@ export default function Archive({ report }: { report: Report }) {
   const [librarySearch, setLibrarySearch] = useState("");
   const [showsSearch, setShowsSearch] = useState("");
   const [openMediaId, setOpenMediaId] = useState<string | null>(null);
+  const [storage, setStorage] = useState<StorageSnapshot | null>(null);
+
+  async function refreshStorage() {
+    try {
+      setStorage(await api<StorageSnapshot>("/api/account/storage"));
+    } catch {
+      // Archive loading remains usable if the storage meter cannot refresh.
+    }
+  }
 
   async function refresh() {
     try {
-      const [nextShows, nextMedia, nextMatches] = await Promise.all([
+      const [nextShows, nextMedia, nextMatches, nextStorage] = await Promise.all([
         api<Show[]>("/api/shows"),
         api<MediaItem[]>("/api/media"),
         api<SongMatch[]>("/api/song-matches"),
+        api<StorageSnapshot>("/api/account/storage").catch(() => null),
       ]);
       setShows(Array.isArray(nextShows) ? nextShows : []);
       setMedia(Array.isArray(nextMedia) ? nextMedia : []);
       setMatches(Array.isArray(nextMatches) ? nextMatches : []);
+      if (nextStorage) setStorage(nextStorage);
       setError(null);
     } catch (cause) {
       setError((cause as Error).message);
@@ -182,7 +195,8 @@ export default function Archive({ report }: { report: Report }) {
       {view.name === "queue" && <>
         <Heading eyebrow="Uploads">Queue</Heading>
         <div className="px-5 md:px-0">
-          <Uploader shows={shows} onMediaComplete={() => void refresh()} report={report} />
+          <StorageMeter storage={storage} loading={loading} />
+          <Uploader shows={shows} storage={storage} onStorageChanged={() => void refreshStorage()} onMediaComplete={() => void refresh()} report={report} />
         </div>
       </>}
     </main>

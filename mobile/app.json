@@ -3,6 +3,7 @@
     "name": "Concert Thing",
     "slug": "concert-thing",
     "version": "0.1.4",
+    "icon": "./assets/icon.png",
     "orientation": "portrait",
     "scheme": "concertthing",
     "userInterfaceStyle": "automatic",
@@ -24,6 +25,7 @@
     "android": {
       "versionCode": 5,
       "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#F5F7FB"
       },
       "permissions": [

@@ -3,6 +3,7 @@
   "name": "concert-thing",
   "main": "src/worker.ts",
   "compatibility_date": "2025-08-20",
+  "triggers": { "crons": ["0 * * * *"] },
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",

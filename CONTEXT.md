@@ -32,6 +32,26 @@ _Avoid_: Unsorted album, uploads
 One original photo or video in the Library.
 _Avoid_: Asset, file, upload
 
+**Storage Allowance**:
+The total original-media capacity available to an Owner through its current Plan and active Storage Grants.
+_Avoid_: Quota, disk limit
+
+**Storage Usage**:
+The combined size of completed original Media Items in an Owner's Library.
+_Avoid_: Stream usage, total bytes
+
+**Storage Reservation**:
+Capacity held for the full declared size of an in-progress Media Item upload.
+_Avoid_: Pending usage, upload size
+
+**Storage Grant**:
+An auditable, additive increase to one Owner's Storage Allowance, optionally limited in time.
+_Avoid_: Bonus quota, plan history
+
+**Plan**:
+The Owner's current base Storage Allowance, replaced as a whole when the Owner changes Plan.
+_Avoid_: Tier history, subscription grant
+
 **Song Match**:
 A candidate identification of a Song within a time range of a video, carrying confidence and an Owner-review state. A video may have multiple Song Matches, and recognition never replaces an Owner correction.
 _Avoid_: Video song, tag

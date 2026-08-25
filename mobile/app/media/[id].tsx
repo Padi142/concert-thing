@@ -14,6 +14,7 @@ import { shareVideoLink } from "../../src/components/VideoShare";
 import { ErrorLine, Hairline, IconButton, LoadingLine, PrimaryButton, QuietButton } from "../../src/components/ui";
 import { useThemeTokens } from "../../src/theme/tokens";
 import type { SongMatch } from "../../src/types";
+import { refreshStorage } from "../../src/lib/storage";
 
 function MatchEditor({ visible, title, artist, manual, heading, submitLabel, onClose, onSubmit }: { visible: boolean; title: string; artist: string; manual: boolean; heading: string; submitLabel: string; onClose: () => void; onSubmit: (title: string, artist: string, startSeconds: number) => Promise<void> }) {
   const tokens = useThemeTokens();
@@ -118,7 +119,7 @@ export default function MediaDetailScreen() {
           onPress: () => {
             setDeleting(true);
             void deleteMedia(item.id)
-              .then(() => router.replace("/(tabs)/library"))
+              .then(() => { void refreshStorage().catch(() => undefined); router.replace("/(tabs)/library"); })
               .catch((cause) => {
                 setDeleting(false);
                 dialog.show("Could not delete media", cause instanceof Error ? cause.message : "Try again.");

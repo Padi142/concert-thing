@@ -47,7 +47,7 @@ function provider(env: Env): RecognitionProvider {
 }
 
 async function recognitionFilename(env: Env, current: JobRow, auth: AuthContext): Promise<{ filename: string; contentType: string }> {
-  const media = await env.DB.prepare("SELECT original_name,content_type FROM media_items WHERE id = ? AND owner_id = ?").bind(current.media_id, auth.userId).first<{ original_name: string; content_type: string }>();
+  const media = await env.DB.prepare("SELECT original_name,content_type FROM media_items WHERE id = ? AND owner_id = ? AND status = 'ready' AND deletion_started_at IS NULL").bind(current.media_id, auth.userId).first<{ original_name: string; content_type: string }>();
   if (!media) throw new HttpError(404, "Media Item not found");
   const extension = /\.[a-zA-Z0-9]{1,10}$/.exec(media.original_name)?.[0] ?? ".mp4";
   return { filename: `${current.id}${extension.toLowerCase()}`, contentType: media.content_type };
@@ -57,15 +57,15 @@ async function job(env: Env, id: string, auth: AuthContext): Promise<JobRow> {
   const row = await env.DB.prepare(`
     SELECT j.id,j.media_id,j.status,j.attempt_count,j.poll_failure_count,j.provider_job_id,j.provider_upload_key,j.last_error,j.updated_at
     FROM recognition_jobs j JOIN media_items m ON m.id = j.media_id
-    WHERE j.id = ? AND m.owner_id = ?
+    WHERE j.id = ? AND m.owner_id = ? AND m.status = 'ready' AND m.deletion_started_at IS NULL
   `).bind(id, auth.userId).first<JobRow>();
   if (!row) throw new HttpError(404, "Recognition job not found");
   return row;
 }
 
 export async function requestRecognition(request: Request, env: Env, mediaId: string, auth: AuthContext): Promise<Response> {
-  const media = await env.DB.prepare("SELECT id,media_type,status FROM media_items WHERE id = ? AND owner_id = ?").bind(mediaId, auth.userId).first<{ media_type: string; status: string }>();
-  if (!media || media.status !== "ready") throw new HttpError(404, "Ready Media Item not found");
+  const media = await env.DB.prepare("SELECT id,media_type,status,deletion_started_at FROM media_items WHERE id = ? AND owner_id = ?").bind(mediaId, auth.userId).first<{ media_type: string; status: string; deletion_started_at: string | null }>();
+  if (!media || media.status !== "ready" || media.deletion_started_at) throw new HttpError(404, "Ready Media Item not found");
   if (media.media_type !== "video") throw new HttpError(415, "Only videos can be recognized");
   const input = await body(request);
   const rerun = input.rerun === true;
@@ -145,7 +145,11 @@ export async function submitRecognition(request: Request, env: Env, jobId: strin
   }
 }
 
-async function saveMatches(env: Env, current: JobRow, matches: ProviderMatch[], _auth: AuthContext) {
+async function saveMatches(env: Env, current: JobRow, matches: ProviderMatch[], auth: AuthContext) {
+  const media = await env.DB.prepare(
+    "SELECT id FROM media_items WHERE id = ? AND owner_id = ? AND status = 'ready' AND deletion_started_at IS NULL",
+  ).bind(current.media_id, auth.userId).first<{ id: string }>();
+  if (!media) return;
   const now = new Date().toISOString();
   const statements = matches.map(match => env.DB.prepare(CANDIDATE_UPSERT_SQL).bind(crypto.randomUUID(), current.media_id, current.id, match.providerMatchId, match.startMs, match.endMs,
     match.confidence, match.title, match.artist, JSON.stringify(match.externalIds), now, now));
@@ -156,7 +160,7 @@ export async function recognitionStatus(env: Env, mediaId: string, auth: AuthCon
   let current = await env.DB.prepare(`
     SELECT j.id,j.media_id,j.status,j.attempt_count,j.poll_failure_count,j.provider_job_id,j.provider_upload_key,j.last_error,j.updated_at
     FROM recognition_jobs j JOIN media_items m ON m.id = j.media_id
-    WHERE j.media_id = ? AND m.owner_id = ? AND j.provider = 'acrcloud' ORDER BY j.created_at DESC LIMIT 1
+    WHERE j.media_id = ? AND m.owner_id = ? AND m.status = 'ready' AND m.deletion_started_at IS NULL AND j.provider = 'acrcloud' ORDER BY j.created_at DESC LIMIT 1
   `).bind(mediaId, auth.userId).first<JobRow>();
   if (!current) throw new HttpError(404, "Recognition job not found");
   if (current.status === "preparing" && Date.now() - Date.parse(current.updated_at) > 60 * 60 * 1000) {
@@ -191,7 +195,8 @@ export async function serveRecognitionSource(request: Request, env: Env, token: 
   const source = await env.DB.prepare(`
     SELECT j.media_id FROM recognition_jobs j
     JOIN media_items m ON m.id = j.media_id
-    WHERE j.provider_upload_key = ? AND j.status IN ('preparing','submitted','processing')
+    WHERE j.provider_upload_key = ? AND m.status = 'ready' AND m.deletion_started_at IS NULL
+      AND j.status IN ('preparing','submitted','processing')
       AND j.updated_at >= datetime('now', '-1 day')
   `).bind(token).first<{ media_id: string }>();
   if (!source) throw new HttpError(404, "Recognition source not found");
@@ -205,7 +210,7 @@ export async function listSongMatches(env: Env, auth: AuthContext): Promise<Resp
       COALESCE(sm.owner_title,s.title,sm.candidate_title) AS title,
       COALESCE(sm.owner_artist,s.primary_artist,sm.candidate_artist) AS artist
     FROM song_matches sm
-    JOIN media_items m ON m.id = sm.media_id AND m.owner_id = ?
+    JOIN media_items m ON m.id = sm.media_id AND m.owner_id = ? AND m.status = 'ready' AND m.deletion_started_at IS NULL
     LEFT JOIN songs s ON s.id = sm.song_id
     ORDER BY sm.media_id, sm.start_ms
   `).bind(auth.userId).all();
@@ -235,12 +240,12 @@ export async function reviewSongMatch(request: Request, env: Env, matchId: strin
   const match = await env.DB.prepare(`
     SELECT sm.id,sm.media_id,sm.candidate_title,sm.candidate_artist,sm.review_state
     FROM song_matches sm JOIN media_items m ON m.id = sm.media_id
-    WHERE sm.id = ? AND m.owner_id = ?
+    WHERE sm.id = ? AND m.owner_id = ? AND m.status = 'ready' AND m.deletion_started_at IS NULL
   `).bind(matchId, auth.userId).first<MatchRow>();
   if (!match) throw new HttpError(404, "Song Match not found");
   const now = new Date().toISOString();
   if (action === "reject") {
-    await env.DB.prepare("UPDATE song_matches SET review_state = 'rejected', song_id = NULL, owner_title = NULL, owner_artist = NULL, updated_at = ? WHERE id = ? AND EXISTS (SELECT 1 FROM media_items m WHERE m.id = song_matches.media_id AND m.owner_id = ?)").bind(now, matchId, auth.userId).run();
+    await env.DB.prepare("UPDATE song_matches SET review_state = 'rejected', song_id = NULL, owner_title = NULL, owner_artist = NULL, updated_at = ? WHERE id = ? AND EXISTS (SELECT 1 FROM media_items m WHERE m.id = song_matches.media_id AND m.owner_id = ? AND m.status = 'ready' AND m.deletion_started_at IS NULL)").bind(now, matchId, auth.userId).run();
     return json({ id: matchId, reviewState: "rejected" });
   }
   if (action !== "confirm" && action !== "edit") throw new HttpError(400, "action must be confirm, edit, or reject");
@@ -250,7 +255,7 @@ export async function reviewSongMatch(request: Request, env: Env, matchId: strin
   const linkedSongId = await songId(env, title, artist);
   await env.DB.prepare(`
     UPDATE song_matches SET review_state = ?, song_id = ?, owner_title = ?, owner_artist = ?, updated_at = ?
-    WHERE id = ? AND EXISTS (SELECT 1 FROM media_items m WHERE m.id = song_matches.media_id AND m.owner_id = ?)
+    WHERE id = ? AND EXISTS (SELECT 1 FROM media_items m WHERE m.id = song_matches.media_id AND m.owner_id = ? AND m.status = 'ready' AND m.deletion_started_at IS NULL)
   `).bind(action === "edit" ? "edited" : "confirmed", linkedSongId, action === "edit" ? title : null, action === "edit" ? artist : null, now, matchId, auth.userId).run();
   return json({ id: matchId, reviewState: action === "edit" ? "edited" : "confirmed", songId: linkedSongId });
 }
@@ -258,10 +263,10 @@ export async function reviewSongMatch(request: Request, env: Env, matchId: strin
 export async function deleteSongMatch(env: Env, matchId: string, auth: AuthContext): Promise<Response> {
   const match = await env.DB.prepare(`
     SELECT sm.id FROM song_matches sm JOIN media_items m ON m.id = sm.media_id
-    WHERE sm.id = ? AND m.owner_id = ?
+    WHERE sm.id = ? AND m.owner_id = ? AND m.status = 'ready' AND m.deletion_started_at IS NULL
   `).bind(matchId, auth.userId).first<{ id: string }>();
   if (!match) throw new HttpError(404, "Song Match not found");
-  await env.DB.prepare("DELETE FROM song_matches WHERE id = ? AND EXISTS (SELECT 1 FROM media_items m WHERE m.id = song_matches.media_id AND m.owner_id = ?)").bind(matchId, auth.userId).run();
+  await env.DB.prepare("DELETE FROM song_matches WHERE id = ? AND EXISTS (SELECT 1 FROM media_items m WHERE m.id = song_matches.media_id AND m.owner_id = ? AND m.status = 'ready' AND m.deletion_started_at IS NULL)").bind(matchId, auth.userId).run();
   return json({ id: match.id, deleted: true });
 }
 
@@ -271,7 +276,7 @@ export async function addManualSongMatch(request: Request, env: Env, mediaId: st
   const artist = text(input.artist, "artist");
   const startMs = Number(input.startMs ?? 0);
   if (!Number.isSafeInteger(startMs) || startMs < 0) throw new HttpError(400, "startMs must be a non-negative integer");
-  const media = await env.DB.prepare("SELECT id FROM media_items WHERE id = ? AND owner_id = ? AND media_type = 'video' AND status = 'ready'").bind(mediaId, auth.userId).first();
+  const media = await env.DB.prepare("SELECT id FROM media_items WHERE id = ? AND owner_id = ? AND media_type = 'video' AND status = 'ready' AND deletion_started_at IS NULL").bind(mediaId, auth.userId).first();
   if (!media) throw new HttpError(404, "Ready video not found");
   const linkedSongId = await songId(env, title, artist);
   const id = crypto.randomUUID();

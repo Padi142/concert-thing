@@ -9,7 +9,8 @@
     "ios": "expo run:ios",
     "typecheck": "tsc --noEmit",
     "test": "tsx tests/queueState.test.ts && tsx tests/eventSync.test.ts && tsx tests/recognitionQueue.test.ts && tsx tests/autoRecognition.test.ts && tsx tests/showRecognition.test.ts && tsx tests/themeConfig.test.ts",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "build:android:local": "./scripts/eas-local-build.sh"
   },
   "dependencies": {
     "@clerk/expo": "^4.5.2",

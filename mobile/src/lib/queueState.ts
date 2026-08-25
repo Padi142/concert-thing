@@ -148,6 +148,31 @@ export function markUploadDuplicate(upload: QueueUpload, mediaId: string | null,
   };
 }
 
+export function markUploadQuotaBlocked(upload: QueueUpload, capacity: string, now = Date.now()): QueueUpload {
+  return {
+    ...upload,
+    state: "blocked",
+    next_retry_at: null,
+    last_error: `Not enough storage · ${capacity}`,
+    updated_at: now,
+  };
+}
+
+/** Start a fresh remote attempt after the server expires an abandoned reservation. */
+export function restartExpiredUpload(upload: QueueUpload, now = Date.now()): QueueUpload {
+  return {
+    ...upload,
+    state: "queued",
+    upload_id: null,
+    media_id: null,
+    chunk_size: null,
+    retry_count: 0,
+    next_retry_at: null,
+    last_error: null,
+    updated_at: now,
+  };
+}
+
 export function isTerminal(state: QueueState): boolean {
   return state === "complete" || state === "duplicate" || state === "failed" || state === "cancelled";
 }

@@ -6,6 +6,7 @@ import { assignMedia, beginUpload, cancelUpload, completeUpload, configureUpload
 import { createShow, listShows } from "./shows";
 import { addManualSongMatch, deleteSongMatch, failRecognitionAttempt, listSongMatches, prepareRecognitionUpload, recognitionStatus, requestRecognition, reviewSongMatch, serveRecognitionSource, submitRecognition } from "./recognition";
 import { createShowShare, createVideoShare, getPublicShow, revokeShowShare, revokeVideoShare, servePublicShowMedia, servePublicVideo, showShareStatus, videoShareStatus } from "./sharing";
+import { getStorageQuota } from "./storage";
 
 export async function handle(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
@@ -25,6 +26,9 @@ export async function handle(request: Request, env: Env): Promise<Response> {
   if (publicVideo && (method === "GET" || method === "HEAD")) return servePublicVideo(request, env, publicVideo[1]);
   const auth = await authenticate(request, env);
   if (path === "/api/account/claim-legacy" && method === "POST") return claimLegacyData(env, auth);
+  if (path === "/api/account/storage" && method === "GET") {
+    return json(await getStorageQuota(env.DB, auth.userId));
+  }
   if (path === "/api/shows" && method === "GET") return listShows(env, auth);
   if (path === "/api/shows" && method === "POST") return createShow(request, env, auth);
   let match = /^\/api\/shows\/([^/]+)\/share$/.exec(path);

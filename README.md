@@ -8,6 +8,7 @@ A private, account-scoped archive service for concert photos and videos, deploye
 - Strict account isolation for Shows, Media Items, uploads, Stream playback, recognition, and Share Link management
 - Create Shows with Artists, venue, locality, times, and timezone
 - Resumable 8 MiB multipart uploads with two-file concurrency and live completion updates
+- Per-Owner Storage Allowances with atomic reservations, additive grants, and plan replacement semantics
 - Originals stored privately in R2
 - Media Item and Show metadata stored in D1
 - Explicit upload-to-Show Assignment or automatic Assignment from embedded MP4/file timestamps
@@ -39,6 +40,7 @@ src/server/               Worker implementation
   auth.ts                 Clerk verification and legacy-archive claiming
   shows.ts                Show persistence and validation
   media.ts                Ingestion, Assignment, search, and playback
+  storage.ts              Storage Allowance, reservation, and reconciliation rules
   recognition/            Provider-neutral recognition and ACRCloud adapter
   http.ts                 Shared HTTP parsing/error behavior
 src/worker.ts             Cloudflare entry point and error translation
@@ -50,7 +52,7 @@ The Worker HTTP interface is the seam between client and server. D1 and R2 bindi
 
 ## Mobile companion
 
-The Expo app in [`mobile/`](mobile/) uses Clerk's SecureStore-backed session cache and sends a fresh session token to the same private Worker API. Selected photos and videos are copied into app-owned storage, recorded in account-scoped SQLite queues, and uploaded as resumable R2 multipart parts. Queue records survive relaunches; the server-side account-scoped `clientUploadId` makes upload creation idempotent if a response is lost.
+The Expo app in [`mobile/`](mobile/) uses Clerk's SecureStore-backed session cache and sends a fresh session token to the same private Worker API. Selected photos and videos are copied into app-owned storage, recorded in account-scoped SQLite queues, and uploaded as resumable R2 multipart parts. Queue records survive relaunches; the server-side account-scoped `clientUploadId` makes upload creation idempotent if a response is lost. Items blocked by the Storage Allowance keep their local copy and wait for an explicit retry instead of looping in the background.
 
 Run the companion from its own workspace:
 
@@ -91,6 +93,12 @@ Jobs are idempotent, have one retry, and expose completed, no-match, unsupported
 ## Video playback
 
 Originals remain private in R2. The Stream binding imports each video through a temporary capability URL, transcodes it for adaptive playback, and requires short-lived signed playback tokens. The interface falls back to authenticated R2 range playback while encoding is in progress or if Stream is unavailable.
+
+## Storage allowance
+
+Each Owner has one decimal-byte Storage Allowance: the current Plan base plus active additive Storage Grants. Only completed R2 originals count as Storage Usage; in-progress uploads reserve their declared size. The authenticated storage endpoint drives the web and mobile meters, while D1 conditional updates remain authoritative when several uploads begin together.
+
+Reservations expire after seven days without meaningful upload activity. Hourly maintenance retries abandoned uploads and Media Item deletions, cleans Stream derivatives independently, and conservatively reconciles counters from D1. Deleting a Media Item hides it immediately, but releases Storage Usage only after R2 confirms the original is gone. Existing Library access remains available when an Owner is over its allowance; only new uploads are blocked.
 
 ## Commands
 

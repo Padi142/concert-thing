@@ -1,7 +1,7 @@
 import { loadApiConfig } from "./config";
 import { getSessionToken } from "./clerk";
 import { normalizeStreamPlayback, type StreamPlayback } from "./streamPlayback";
-import type { ApiConfig, MediaItem, RecognitionJob, Show, ShowShare, SongMatch, UploadInitResponse, VideoShare } from "../types";
+import type { ApiConfig, MediaItem, RecognitionJob, Show, ShowShare, SongMatch, StorageSnapshot, UploadInitResponse, VideoShare } from "../types";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -67,6 +67,10 @@ export async function request<T>(path: string, init: RequestInit = {}, override?
 
 export async function getShows(): Promise<Show[]> {
   return request<Show[]>("/api/shows");
+}
+
+export async function getStorage(): Promise<StorageSnapshot> {
+  return request<StorageSnapshot>("/api/account/storage");
 }
 
 export async function claimLegacyData(): Promise<{ claimed: boolean; legacyOwner: boolean; shows: number; mediaItems: number }> {
@@ -135,8 +139,8 @@ export async function assignMedia(mediaId: string, showId: string | null): Promi
   });
 }
 
-export async function deleteMedia(mediaId: string): Promise<{ id: string; deleted: true }> {
-  const deleted = await request<{ id: string; deleted: true }>(`/api/media/${encodeURIComponent(mediaId)}`, { method: "DELETE" });
+export async function deleteMedia(mediaId: string): Promise<{ id: string; status: "deleting" | "deleted"; deleted: boolean }> {
+  const deleted = await request<{ id: string; status: "deleting" | "deleted"; deleted: boolean }>(`/api/media/${encodeURIComponent(mediaId)}`, { method: "DELETE" });
   streamPlaybackCache.delete(mediaId);
   return deleted;
 }

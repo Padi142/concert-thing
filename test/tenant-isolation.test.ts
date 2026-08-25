@@ -25,7 +25,7 @@ function migrate(database: DatabaseSync): void {
   for (const migration of [
     "0001_initial.sql", "0002_assignment_provenance.sql", "0003_song_recognition.sql",
     "0004_stream_video.sql", "0005_duplicate_videos.sql", "0005_mobile_upload_idempotency.sql",
-    "0006_public_show_sharing.sql", "0007_short_public_links.sql", "0008_clerk_tenancy.sql", "0009_public_video_sharing.sql",
+    "0006_public_show_sharing.sql", "0007_short_public_links.sql", "0008_clerk_tenancy.sql", "0009_public_video_sharing.sql", "0010_storage_quota.sql",
   ]) database.exec(readFileSync(`migrations/${migration}`, "utf8"));
 }
 
@@ -88,6 +88,9 @@ legacyDatabase.exec(`INSERT INTO media_items (id,object_key,original_name,media_
 const legacyEnv = env(legacyDatabase);
 const firstClaim = await claimLegacyData(legacyEnv, userA);
 assert.deepEqual(await firstClaim.json(), { claimed: true, legacyOwner: true, shows: 1, mediaItems: 1 });
+const claimedStorage = legacyDatabase.prepare("SELECT used_bytes,reserved_bytes FROM owner_storage WHERE owner_id = 'user-a'").get() as { used_bytes: number; reserved_bytes: number };
+assert.equal(claimedStorage.used_bytes, 1);
+assert.equal(claimedStorage.reserved_bytes, 0);
 const laterClaim = await claimLegacyData(legacyEnv, userB);
 assert.deepEqual(await laterClaim.json(), { claimed: false, legacyOwner: false, shows: 0, mediaItems: 0 });
 

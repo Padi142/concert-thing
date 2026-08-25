@@ -47,7 +47,16 @@ export type RecognitionJob = {
   last_error: string | null;
 };
 
-export type QueueState = "queued" | "uploading" | "paused" | "retrying" | "complete" | "duplicate" | "failed" | "cancelled";
+export type QueueState = "queued" | "uploading" | "paused" | "retrying" | "blocked" | "complete" | "duplicate" | "failed" | "cancelled";
+
+export type StorageSnapshot = {
+  effectiveQuotaBytes: number;
+  usedBytes: number;
+  reservedBytes: number;
+  availableBytes: number;
+  overQuota: boolean;
+  plan: { key: string; name: string };
+};
 
 export type QueueUpload = {
   id: string;
