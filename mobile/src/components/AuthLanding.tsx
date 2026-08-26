@@ -1,50 +1,53 @@
-import { ActivityIndicator, Modal, Platform, Pressable, Text, View } from "react-native";
-import { AuthView } from "@clerk/expo/native";
+import { ActivityIndicator, Platform, Pressable, Text, View } from "react-native";
 import { useClerk } from "@clerk/expo";
+import { useHostedAuth } from "@clerk/expo/hosted-auth";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useThemeTokens } from "../theme/tokens";
 import { useState } from "react";
 
 export function AuthLanding({ loading = false }: { loading?: boolean }) {
   const tokens = useThemeTokens();
   const clerk = useClerk();
+  const { startHostedAuth } = useHostedAuth();
   const nativeAuth = Platform.OS === "ios" || Platform.OS === "android";
-  const [authOpen, setAuthOpen] = useState(nativeAuth);
+  const androidHostedAuthRedirectUrl = "clerk://com.padi142.concertthing.hosted-callback";
+  const [authBusy, setAuthBusy] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
 
-  if (loading) {
-    return <View className="flex-1 items-center justify-center bg-canvas"><ActivityIndicator size="small" color={tokens.colors.accent} /><Text className="mt-3 font-sans text-[15px] text-muted">Preparing secure sign-in…</Text></View>;
+  async function startNativeAuth(mode: "sign-in" | "sign-up") {
+    setAuthBusy(true);
+    setAuthError(null);
+    try {
+      await startHostedAuth({
+        mode,
+        ...(Platform.OS === "android" ? { redirectUrl: androidHostedAuthRedirectUrl } : {}),
+      });
+    } catch (cause) {
+      setAuthError(cause instanceof Error ? cause.message : "Could not open secure sign-in.");
+    } finally {
+      setAuthBusy(false);
+    }
   }
 
-  return <View className="flex-1 bg-canvas">
-    <View className="px-6 pb-3 pt-8">
-      <Text className="font-sans text-[12px] font-semibold uppercase tracking-[1.6px] text-blue">Concert Thing</Text>
-      <Text className="mt-2 font-display text-[30px] leading-9 text-ink">Your archive, ready when you are.</Text>
-      <Text className="mt-2 font-sans text-[15px] leading-5 text-muted">Sign in to keep shows, uploads, and recognition results synced to your account.</Text>
+  if (loading) {
+    return <View className="flex-1 items-center justify-center bg-canvas"><ActivityIndicator size="small" color={tokens.colors.accent} /></View>;
+  }
+
+  const primaryAction = nativeAuth ? () => void startNativeAuth("sign-in") : () => void clerk.openSignIn();
+  const createAction = nativeAuth ? () => void startNativeAuth("sign-up") : () => void clerk.openSignUp();
+
+  return <SafeAreaView edges={["top", "bottom"]} className="flex-1 bg-canvas">
+    <View className="flex-1 justify-center px-5">
+      <Text className="font-display text-[40px] leading-[44px] text-ink">Concert Thing</Text>
+      <View className="mt-7 gap-2">
+        <Pressable accessibilityRole="button" accessibilityLabel="Sign in to archive" disabled={authBusy} onPress={primaryAction} className="min-h-12 items-center justify-center rounded-[10px] bg-blue px-5" style={({ pressed }) => [pressed ? { opacity: 0.82 } : undefined]}>
+          {authBusy ? <ActivityIndicator size="small" color={tokens.colors.accentInk} /> : <Text className="font-sans text-[16px] font-semibold text-accentInk">Sign in to archive</Text>}
+        </Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="Create account" disabled={authBusy} onPress={createAction} className="min-h-12 items-center justify-center rounded-[10px] bg-surface px-5" style={({ pressed }) => [{ borderWidth: 1, borderColor: tokens.colors.controlLine }, pressed ? { opacity: 0.72 } : undefined]}>
+          <Text className="font-sans text-[16px] font-semibold text-ink">Create account</Text>
+        </Pressable>
+        {authError ? <Text accessibilityRole="alert" className="mt-1 font-sans text-[13px] leading-5 text-danger">{authError}</Text> : null}
+      </View>
     </View>
-    {nativeAuth ? <>
-      <View className="mx-6 mt-6 rounded-[16px] border border-control bg-surface p-5">
-        <Text className="font-display text-[21px] text-ink">Continue securely</Text>
-        <Text className="mt-2 font-sans text-[15px] leading-5 text-muted">Use your Clerk account to enter the archive or create a new one.</Text>
-        <Pressable accessibilityRole="button" accessibilityLabel="Open sign in" onPress={() => setAuthOpen(true)} className="mt-5 min-h-12 items-center justify-center rounded-[10px] bg-blue"><Text className="font-sans text-[16px] font-semibold text-accentInk">Continue</Text></Pressable>
-      </View>
-      {/* Clerk's Android Compose view needs a modal host; an inline flex host
-          renders only its header/footer and leaves the form body empty. */}
-      <Modal
-        animationType="slide"
-        visible={authOpen}
-        presentationStyle="pageSheet"
-        onRequestClose={() => setAuthOpen(false)}
-      >
-        <View className="flex-1 bg-surface">
-          <AuthView mode="signInOrUp" onDismiss={() => setAuthOpen(false)} />
-        </View>
-      </Modal>
-    </> : <View className="mx-6 mt-6 rounded-[16px] border border-control bg-surface p-5">
-      <Text className="font-display text-[21px] text-ink">Continue securely</Text>
-      <Text className="mt-2 font-sans text-[15px] leading-5 text-muted">Use your Clerk account to enter the archive or create a new one.</Text>
-      <View className="mt-5 gap-2">
-        <Pressable accessibilityRole="button" accessibilityLabel="Sign in" onPress={() => void clerk.openSignIn()} className="min-h-12 items-center justify-center rounded-[10px] bg-blue"><Text className="font-sans text-[16px] font-semibold text-accentInk">Sign in</Text></Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel="Create account" onPress={() => void clerk.openSignUp()} className="min-h-12 items-center justify-center rounded-[10px] border border-control bg-surface"><Text className="font-sans text-[16px] font-semibold text-ink">Create account</Text></Pressable>
-      </View>
-    </View>}
-  </View>;
+  </SafeAreaView>;
 }

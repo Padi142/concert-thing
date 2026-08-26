@@ -20,11 +20,11 @@ pnpm exec expo run:android
 
 Sign in or create an account from the first screen. The default archive URL is `https://shows.krejzac.cz`; it can be changed in Settings. API requests obtain a fresh Clerk session token, and no permanent Owner token is stored on the device.
 
-The native Clerk `AuthView` is hosted in a React Native `Modal`. On Android,
-embedding the Compose view directly in a flex container can render only the
-header and footer while leaving the form body empty. Keep
-`useAuth({ treatPendingAsSignedOut: false })` and `useAuthViewState()` together
-so native post-authentication work is not unmounted early.
+Native sign-in opens Clerk's hosted Account Portal through the system browser.
+This keeps Google OAuth on the browser callback path instead of requiring the
+Android build's signing certificate to be registered for native Credential
+Manager sign-in. The Clerk Expo plugin registers the Android
+`clerk://<package>.hosted-callback` intent filter used to return to the app.
 Automatic song recognition is opt-in from Settings. When enabled, each newly completed video upload is submitted to the app-level recognition queue before the upload background task finishes.
 
 Useful checks:
@@ -84,6 +84,8 @@ served at `https://shows.krejzac.cz/downloads/concert-thing.apk`.
 ## Upload queue
 
 Selected files are copied into app-owned document storage before they are added to SQLite. The queue has normalized upload and part rows, persists the Clerk account ID alongside multipart session IDs and ETags, limits active transfers to two, retries with exponential backoff, reconciles completion after a lost response, and rehydrates interrupted transfers on app launch. Queue reads and mutations are account-scoped, so signing out or switching accounts cannot process another account's local work. Rows from an older pre-auth build are claimed once by the first signed-in account on that device. Completed local copies are removed after the server reports the original ready in R2.
+
+Videos can also be selected in the system gallery and shared directly to Concert Thing. The native share target copies the incoming files into the same durable queue, then resumes uploads automatically. Because this uses native share configuration, rebuild the development or release app after changing the share setup; Expo Go cannot add the share target.
 
 The multipart sequence matches the Worker API: videos are SHA-256 hashed in bounded local chunks, then `POST /api/uploads` sends the hash with a stable `clientUploadId`, followed by `PATCH` metadata, `PUT` each part, and `POST /complete`. Hashes are persisted with the durable queue so retries do not read the full video again. A duplicate response is terminal and releases the redundant app-owned copy. A completion retry is safe because the Worker checks the ready object and the queue can safely re-upload a part when its response was lost.
 

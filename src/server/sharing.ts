@@ -34,11 +34,26 @@ function shareResponse(request: Request, token: string | null): Response {
 function videoShareResponse(request: Request, token: string | null): Response {
   return json({
     shared: Boolean(token),
-    // The URL intentionally points at the video bytes. Discord and similar
-    // clients can embed a direct video response, while the token keeps the
-    // original R2 object private and revocable.
-    url: token ? `${new URL(request.url).origin}/video/${token}.mp4` : null,
+    // Share the metadata page so link-preview crawlers can discover the
+    // direct video stream. The page and stream are both protected by the same
+    // revocable token.
+    url: token ? `${new URL(request.url).origin}/video/${token}` : null,
   });
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, character => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  })[character] ?? character);
+}
+
+function shareVideoContentType(contentType: string, originalName: string): string {
+  if (/\.(?:mp4|m4v)$/i.test(originalName) || contentType === "video/mp4") return "video/mp4";
+  return contentType.startsWith("video/") ? contentType : "video/mp4";
 }
 
 export async function showShareStatus(request: Request, env: Env, showId: string, auth: AuthContext): Promise<Response> {
@@ -117,6 +132,75 @@ export async function revokeVideoShare(request: Request, env: Env, mediaId: stri
     await env.DB.prepare("UPDATE media_items SET public_token = NULL WHERE id = ? AND owner_id = ?").bind(mediaId, auth.userId).run();
   }
   return videoShareResponse(request, null);
+}
+
+type PublicVideoPreviewRow = {
+  original_name: string;
+  content_type: string;
+  duration_ms: number | null;
+};
+
+export async function servePublicVideoPreview(request: Request, env: Env, token: string): Promise<Response> {
+  requirePublicToken(token);
+  const video = await env.DB.prepare(`
+    SELECT original_name,content_type,duration_ms
+    FROM media_items
+    WHERE public_token = ? AND media_type = 'video' AND status = 'ready' AND deletion_started_at IS NULL
+  `).bind(token).first<PublicVideoPreviewRow>();
+  if (!video) throw new HttpError(404, "Public video not found");
+
+  const pageUrl = new URL(`/video/${token}`, request.url).href;
+  const mediaUrl = new URL(`/video/${token}.mp4`, request.url).href;
+  const escapedPageUrl = escapeHtml(pageUrl);
+  const escapedMediaUrl = escapeHtml(mediaUrl);
+  const contentType = escapeHtml(shareVideoContentType(video.content_type, video.original_name));
+  const title = escapeHtml(video.original_name || "Shared video");
+  const description = "Shared video from Concert Archive";
+  const escapedDescription = escapeHtml(description);
+  const duration = video.duration_ms === null ? "" : `<meta property="og:video:duration" content="${Math.max(0, Math.round(video.duration_ms / 1000))}">`;
+  const html = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>${title}</title>
+    <meta name="description" content="${escapedDescription}">
+    <meta property="og:type" content="video.other">
+    <meta property="og:site_name" content="Concert Archive">
+    <meta property="og:title" content="${title}">
+    <meta property="og:description" content="${escapedDescription}">
+    <meta property="og:url" content="${escapedPageUrl}">
+    <meta property="og:video" content="${escapedMediaUrl}">
+    <meta property="og:video:url" content="${escapedMediaUrl}">
+    <meta property="og:video:secure_url" content="${escapedMediaUrl}">
+    <meta property="og:video:type" content="${contentType}">
+    ${duration}
+    <meta name="twitter:card" content="player">
+    <meta name="twitter:title" content="${title}">
+    <meta name="twitter:description" content="${escapedDescription}">
+    <meta name="twitter:player" content="${escapedPageUrl}">
+    <meta name="twitter:player:width" content="1280">
+    <meta name="twitter:player:height" content="720">
+    <meta name="twitter:player:stream" content="${escapedMediaUrl}">
+    <meta name="twitter:player:stream:content_type" content="${contentType}">
+    <link rel="canonical" href="${pageUrl}">
+    <style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#111;color:#fff;font:16px system-ui,sans-serif}main{width:min(960px,100%);padding:24px;box-sizing:border-box}video{display:block;width:100%;max-height:80vh;background:#000}h1{font-size:18px;font-weight:500;overflow-wrap:anywhere}a{color:#fff}</style>
+  </head>
+  <body>
+    <main>
+      <video controls playsinline preload="metadata" src="${escapedMediaUrl}"></video>
+      <h1>${title}</h1>
+      <a href="${escapedMediaUrl}" download>Download video</a>
+    </main>
+  </body>
+</html>`;
+  const headers = new Headers({
+    "cache-control": "public, max-age=300",
+    "content-type": "text/html; charset=utf-8",
+    "referrer-policy": "no-referrer",
+    "x-content-type-options": "nosniff",
+  });
+  return new Response(request.method === "HEAD" ? null : html, { status: 200, headers });
 }
 
 type PublicShowRow = {
@@ -236,14 +320,15 @@ export async function servePublicShowMedia(request: Request, env: Env, token: st
 export async function servePublicVideo(request: Request, env: Env, token: string): Promise<Response> {
   requirePublicToken(token);
   const video = await env.DB.prepare(`
-    SELECT id,owner_id
+    SELECT id,owner_id,original_name,content_type
     FROM media_items
     WHERE public_token = ? AND media_type = 'video' AND status = 'ready' AND deletion_started_at IS NULL
-  `).bind(token).first<{ id: string; owner_id: string | null }>();
+  `).bind(token).first<{ id: string; owner_id: string | null; original_name: string; content_type: string }>();
   if (!video) throw new HttpError(404, "Public video not found");
   return serveMedia(request, env, video.id, {
     ownerId: video.owner_id,
     mediaType: "video",
     isPublic: true,
+    contentType: shareVideoContentType(video.content_type, video.original_name),
   });
 }

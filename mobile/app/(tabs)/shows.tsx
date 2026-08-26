@@ -19,7 +19,7 @@ export default function ShowsScreen() {
   }, [shows, query]);
   return <SafeAreaView edges={["top"]} className="flex-1 bg-canvas">
     <ScrollView refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await refresh(); setRefreshing(false); }} tintColor={tokens.colors.accent} />} contentContainerStyle={{ paddingTop: 12, paddingBottom: 32 }}>
-      <Heading eyebrow="Your events" action={<IconButton icon="add" label="Create a show" onPress={() => router.push("/show/new")} tone="accent" />}>Shows</Heading>
+      <Heading action={<IconButton icon="add" label="Create a show" onPress={() => router.push("/show/new")} tone="accent" />}>Shows</Heading>
       <SearchField value={query} onChangeText={setQuery} placeholder="Search shows, venues, artists" />
       {loading && !shows.length ? <LoadingLine label="Loading shows" /> : null}
       {error ? <ErrorLine message={error} onRetry={refresh} /> : null}

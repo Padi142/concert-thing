@@ -12,10 +12,9 @@ export function Screen({ children, style, className = "" }: PropsWithChildren<{ 
   return <View style={style} className={`flex-1 bg-canvas ${className}`}>{children}</View>;
 }
 
-export function Heading({ children, eyebrow, action }: { children: ReactNode; eyebrow?: string; action?: ReactNode }) {
+export function Heading({ children, action }: { children: ReactNode; action?: ReactNode }) {
   return <View className="mb-4 flex-row items-end justify-between px-5">
     <View className="min-w-0 flex-1">
-      {eyebrow ? <Text className="mb-1 font-sans text-[12px] font-semibold uppercase tracking-[1.4px] text-muted">{eyebrow}</Text> : null}
       <Text className="font-display text-[30px] leading-[34px] text-ink">{children}</Text>
     </View>
     {action}

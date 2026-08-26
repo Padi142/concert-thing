@@ -51,6 +51,22 @@
       "expo-image-picker",
       "expo-media-library",
       "expo-secure-store",
+      [
+        "expo-sharing",
+        {
+          "android": {
+            "enabled": true,
+            "singleShareMimeTypes": ["video/*"],
+            "multipleShareMimeTypes": ["video/*"]
+          },
+          "ios": {
+            "enabled": true,
+            "activationRule": {
+              "supportsMovieWithMaxCount": 100
+            }
+          }
+        }
+      ],
       "expo-system-ui",
       [
         "expo-background-task",
@@ -59,7 +75,8 @@
         }
       ],
       "expo-sqlite",
-      "@clerk/expo"
+      "@clerk/expo",
+      "expo-web-browser"
     ],
     "extra": {
       "router": {},

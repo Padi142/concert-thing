@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { CalendarDays, CalendarPlus, ChevronLeft, Images, Plus, Search, SearchX, X } from "lucide-react";
 import { api } from "./api";
+import AdminPanel from "./AdminPanel";
 import type { MediaItem, Report, Show, SongMatch } from "./types";
 import MediaDetail from "./components/MediaDetail";
 import MediaGrid from "./components/MediaGrid";
@@ -42,8 +43,8 @@ export function ErrorLine({ message, onRetry }: { message: string; onRetry?: () 
   return <div className="error-line">{message}{onRetry && <button type="button" className="btn-quiet mt-1 -ml-3 block" onClick={onRetry}>Try again</button>}</div>;
 }
 
-export default function Archive({ report }: { report: Report }) {
-  const [view, setView] = useState<View>({ name: "library" });
+export default function Archive({ report, isAdmin = false }: { report: Report; isAdmin?: boolean }) {
+  const [view, setView] = useState<View>(() => isAdmin && window.location.pathname === "/admin" ? { name: "admin" } : { name: "library" });
   const [shows, setShows] = useState<Show[]>([]);
   const [media, setMedia] = useState<MediaItem[]>([]);
   const [matches, setMatches] = useState<SongMatch[]>([]);
@@ -120,9 +121,10 @@ export default function Archive({ report }: { report: Report }) {
   const detailShow = view.name === "show" ? shows.find(candidate => candidate.id === view.id) : undefined;
 
   return <>
-    <Navigation active={view.name === "show" ? "shows" : view.name} onNavigate={name => { setView({ name }); setOpenMediaId(null); setShowForm(false); }} inboxCount={inbox.length} />
+    <Navigation active={view.name === "show" ? "shows" : view.name} isAdmin={isAdmin} onNavigate={name => { if (name === "admin" && !isAdmin) return; setView({ name }); setOpenMediaId(null); setShowForm(false); }} inboxCount={inbox.length} />
 
-    <main id="top" className="mx-auto max-w-5xl pb-32 pt-5 md:pb-16 md:pt-9">
+    <main id="top" className={`mx-auto pb-32 pt-5 md:pb-16 md:pt-9 ${view.name === "admin" ? "max-w-5xl px-5 md:px-0" : "max-w-5xl"}`}>
+      {view.name === "admin" && isAdmin && <AdminPanel report={report} />}
       {view.name === "library" && <>
         <Heading eyebrow="Concert archive" action={<button type="button" className="icon-btn !bg-blue !text-accentInk" aria-label="Add photos or videos" onClick={() => setView({ name: "queue" })}><Plus size={22} /></button>}>Library</Heading>
         <div className="px-5 md:px-0">

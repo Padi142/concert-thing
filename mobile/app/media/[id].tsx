@@ -132,7 +132,7 @@ export default function MediaDetailScreen() {
   }
   return <SafeAreaView edges={["top"]} className="flex-1 bg-canvas">
     <ScrollView contentContainerStyle={{ paddingTop: 12, paddingBottom: 40 }}>
-      <View className="mb-5 flex-row items-center px-5"><IconButton icon="arrow-back" label="Go back" onPress={() => router.back()} /><View className="ml-3 min-w-0 flex-1"><Text className="font-sans text-[12px] font-semibold uppercase tracking-[1.2px] text-muted">Media detail</Text><Text numberOfLines={1} className="font-display text-[22px] text-ink">{item?.original_name ?? "Media"}</Text></View>{item?.media_type === "video" ? <IconButton icon="ellipsis-horizontal" label="Video options" onPress={() => setMenuOpen(true)} /> : null}</View>
+      <View className="mb-5 flex-row items-center px-5"><IconButton icon="arrow-back" label="Go back" onPress={() => router.back()} /><View className="ml-3 min-w-0 flex-1"><Text numberOfLines={1} className="font-display text-[22px] text-ink">{item?.original_name ?? "Media"}</Text></View>{item?.media_type === "video" ? <IconButton icon="ellipsis-horizontal" label="Video options" onPress={() => setMenuOpen(true)} /> : null}</View>
       <Hairline className="mb-4" />
       {!item && loading ? <LoadingLine label="Loading media" /> : null}
       {error ? <ErrorLine message={error} onRetry={refresh} /> : null}
@@ -176,7 +176,7 @@ export default function MediaDetailScreen() {
     </ScrollView>
     <AssignmentSheet visible={assignVisible} shows={shows} selectedId={item?.show_id ?? null} onClose={() => setAssignVisible(false)} onCreateNew={item && !item.show_id ? () => { setAssignVisible(false); router.push({ pathname: "/show/new", params: { sourceMediaId: item.id, capturedAt: item.captured_at ?? "" } }); } : undefined} onSelect={(showId) => { if (item) void assignMedia(item.id, showId).then(() => setAssignVisible(false)); }} />
     <Dialog visible={menuOpen} spec={{ title: "Video options", message: item?.original_name }} onClose={() => setMenuOpen(false)}>
-      <DialogOption icon="share-outline" label="Share video link" detail="Discord can play the video inline" onPress={() => { setMenuOpen(false); if (item) void shareVideoLink(item.id, item.original_name).catch((cause) => dialog.show("Could not share this video", cause instanceof Error ? cause.message : "Try again in a moment.")); }} />
+      <DialogOption icon="share-outline" label="Share video link" onPress={() => { setMenuOpen(false); if (item) void shareVideoLink(item.id).catch((cause) => dialog.show("Could not share this video", cause instanceof Error ? cause.message : "Try again in a moment.")); }} />
     </Dialog>
     <MatchEditor visible={Boolean(editor)} title={editor?.match?.title ?? ""} artist={editor?.match?.artist ?? ""} manual={editor?.manual ?? false} heading={editor?.manual ? "Add song" : "Edit song"} submitLabel={editor?.manual ? "Add song" : "Save changes"} onClose={() => setEditor(null)} onSubmit={editMatch} />
     <Dialog visible={Boolean(dialog.spec)} spec={dialog.spec} onClose={dialog.close} />

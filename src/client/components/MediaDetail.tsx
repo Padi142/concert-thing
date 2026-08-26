@@ -64,7 +64,7 @@ export default function MediaDetail({ item, shows, matches, onClose, onChanged, 
         </p>
         <p className="mt-1 text-xs text-subtle">{(item.byte_size / 1024 / 1024).toFixed(1)} MB · {item.media_type === "video" ? "Video" : "Photo"}</p>
 
-        {item.media_type === "video" && <VideoShare mediaId={item.id} mediaName={item.original_name} report={report} />}
+        {item.media_type === "video" && <VideoShare mediaId={item.id} report={report} />}
 
         <label className="mt-5 block">Assigned Show
           <select className="mt-2" aria-label={`Assign ${item.original_name} to a Show`} value={item.show_id || ""} onChange={event => void assign(event.target.value)}>

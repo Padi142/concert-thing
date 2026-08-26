@@ -21,7 +21,7 @@ A private, account-scoped archive service for concert photos and videos, deploye
 - Library search by confirmed Song title or primary Artist
 - SHA-256 duplicate detection prevents the same video bytes from being uploaded twice
 - Revocable public Show links let anyone with the URL watch and download that Show's ready videos
-- Revocable per-video links expose one ready video as a direct inline media URL that Discord and similar clients can embed
+- Revocable per-video links expose one ready video through a metadata preview page with a direct inline media stream for compatible clients
 
 Public links expose only ready videos assigned to that Show. Visitors watch short-lived signed Cloudflare Stream versions, see non-rejected recognized Songs and their timestamps, and download the private R2 original only through the Download action. Photos, other Shows, and owner controls remain private. Turning off a link invalidates its unguessable token.
 

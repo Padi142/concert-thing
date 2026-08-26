@@ -5,14 +5,15 @@ import { useFonts } from "expo-font";
 import { SpaceGrotesk_600SemiBold } from "@expo-google-fonts/space-grotesk";
 import { IBMPlexSans_400Regular, IBMPlexSans_500Medium, IBMPlexSans_600SemiBold } from "@expo-google-fonts/ibm-plex-sans";
 import { useAuth, ClerkProvider } from "@clerk/expo";
-import { useAuthViewState } from "@clerk/expo/native";
 import { tokenCache } from "@clerk/expo/token-cache";
-import { useColorScheme, Text, View } from "react-native";
+import { useIncomingShare } from "expo-sharing";
+import { Platform, useColorScheme, Text, View } from "react-native";
 import { useEffect, useRef, useState } from "react";
 import { darkTokens, lightTokens, themeVariables } from "../src/theme/tokens";
 import { AuthLanding } from "../src/components/AuthLanding";
 import { CLERK_PUBLISHABLE_KEY } from "../src/lib/clerk";
 import { claimLegacyData, resetApiConfigCache } from "../src/lib/api";
+import { enqueueSharedVideos } from "../src/lib/incomingShareQueue";
 import { resetRecognitionQueue } from "../src/lib/recognitionQueue";
 import { resumeQueue } from "../src/lib/uploadQueue";
 
@@ -37,11 +38,7 @@ export default function RootLayout() {
 }
 
 function AuthenticatedApp() {
-  // Native auth can expose a signed-in session while Clerk is still finishing
-  // its native post-authentication work. Keep that state distinct from a
-  // completed flow so the auth surface is not unmounted too early.
   const { isLoaded, isSignedIn, userId } = useAuth({ treatPendingAsSignedOut: false });
-  const { isLoaded: authViewLoaded, isAuthFlowComplete } = useAuthViewState();
   const previousUserId = useRef<string | null | undefined>(undefined);
   const [preparedUserId, setPreparedUserId] = useState<string | null>(null);
   const legacyReady = Boolean(isSignedIn && userId && preparedUserId === userId);
@@ -74,15 +71,48 @@ function AuthenticatedApp() {
     return () => { cancelled = true; };
   }, [isLoaded, isSignedIn, userId]);
 
-  if (!isLoaded || !authViewLoaded) return <AuthLanding loading />;
+  if (!isLoaded) return <AuthLanding loading />;
   if (!isSignedIn) return <AuthLanding />;
-  if (!isAuthFlowComplete) return <AuthLanding />;
   if (!legacyReady) return <AuthLanding loading />;
-  return <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: "transparent" } }}>
-    <Stack.Screen name="(tabs)" />
-    <Stack.Screen name="show/new" options={{ presentation: "modal" }} />
-    <Stack.Screen name="show/[id]" />
-    <Stack.Screen name="media/[id]" />
-    <Stack.Screen name="settings" options={{ presentation: "modal" }} />
-  </Stack>;
+  return <>
+    {Platform.OS === "web" ? null : <IncomingShareBridge />}
+    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: "transparent" } }}>
+      <Stack.Screen name="(tabs)" />
+      <Stack.Screen name="show/new" options={{ presentation: "modal" }} />
+      <Stack.Screen name="show/[id]" />
+      <Stack.Screen name="media/[id]" />
+      <Stack.Screen name="settings" options={{ presentation: "modal" }} />
+    </Stack>
+  </>;
+}
+
+function IncomingShareBridge() {
+  const { resolvedSharedPayloads, isResolving, clearSharedPayloads, refreshSharePayloads } = useIncomingShare();
+  const processedShareKey = useRef<string | null>(null);
+  const shareKey = resolvedSharedPayloads.map((payload) => `${payload.value}|${payload.contentUri ?? ""}`).join("\n");
+
+  useEffect(() => {
+    if (!shareKey) {
+      processedShareKey.current = null;
+      return;
+    }
+    if (isResolving || processedShareKey.current === shareKey) return;
+    processedShareKey.current = shareKey;
+    let cancelled = false;
+    void (async () => {
+      void resumeQueue();
+      await enqueueSharedVideos(resolvedSharedPayloads);
+      if (!cancelled) {
+        clearSharedPayloads();
+        void refreshSharePayloads();
+      }
+      await resumeQueue();
+    })().catch(() => {
+      // Keep the native share payload available if copying the files failed.
+      processedShareKey.current = null;
+    });
+    return () => { cancelled = true; };
+  }, [clearSharedPayloads, isResolving, refreshSharePayloads, resolvedSharedPayloads, shareKey]);
+
+  return null;
 }

@@ -77,7 +77,7 @@ export default function LibraryScreen() {
     setAddOpen(true);
   }
 
-  const listHeader = <View className="pt-3"><Heading eyebrow="Concert archive" action={<View className="flex-row items-center gap-2"><AccountControl /><IconButton icon="settings-outline" label="Open settings" onPress={() => router.push("/settings")} /><IconButton icon="add" label="Add photos or videos" onPress={addMedia} tone="accent" /></View>}>Library</Heading><QueueStrip uploads={uploads} /><SearchField value={query} onChangeText={setQuery} placeholder="Search files, shows, or songs" />{addingStatus ? <LoadingLine label={addingStatus} /> : null}{loading && !media.length ? <LoadingLine label="Loading your archive" /> : null}{error ? <ErrorLine message={error} onRetry={refresh} /> : null}</View>;
+  const listHeader = <View className="pt-3"><Heading action={<View className="flex-row items-center gap-2"><AccountControl /><IconButton icon="settings-outline" label="Open settings" onPress={() => router.push("/settings")} /><IconButton icon="add" label="Add photos or videos" onPress={addMedia} tone="accent" /></View>}>Library</Heading><QueueStrip uploads={uploads} /><SearchField value={query} onChangeText={setQuery} placeholder="Search files, shows, or songs" />{addingStatus ? <LoadingLine label={addingStatus} /> : null}{loading && !media.length ? <LoadingLine label="Loading your archive" /> : null}{error ? <ErrorLine message={error} onRetry={refresh} /> : null}</View>;
   return <SafeAreaView edges={["top"]} className="flex-1 bg-canvas"><FlashList
     data={rows}
     keyExtractor={(row, index) => `${row.show.id}-${index}`}

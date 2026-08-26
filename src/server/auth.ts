@@ -14,9 +14,13 @@ function authorizedParties(env: Env): string[] | undefined {
   return parties.length ? parties : undefined;
 }
 
-function sessionToken(request: Request): string | undefined {
+function bearerToken(request: Request): string | undefined {
   const authorization = request.headers.get("authorization");
-  const bearer = authorization?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim();
+  return authorization?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim();
+}
+
+function sessionToken(request: Request): string | undefined {
+  const bearer = bearerToken(request);
   if (bearer) return bearer;
   const cookie = request.headers.get("cookie");
   if (!cookie) return undefined;
@@ -34,6 +38,16 @@ function sessionToken(request: Request): string | undefined {
 }
 
 /**
+ * Native Clerk sessions use a bearer token without a browser cookie. Clerk
+ * omits `azp` for those sessions, so the web-origin allowlist must not reject
+ * an otherwise valid native token. Browser requests still need a cookie or an
+ * explicit `azp` that matches the configured allowlist.
+ */
+function isNativeBearerRequest(request: Request): boolean {
+  return Boolean(bearerToken(request) && !request.headers.get("cookie"));
+}
+
+/**
  * Authenticate a request with Clerk's session token. We explicitly extract
  * both Authorization: Bearer and the normal __session cookie so this works
  * for the mobile Bearer flow as well as browser requests.
@@ -48,8 +62,15 @@ export async function authenticate(request: Request, env: Env): Promise<AuthCont
   try {
     const claims = await verifyToken(token, {
       jwtKey: env.CLERK_JWT_KEY,
-      authorizedParties: authorizedParties(env),
     });
+    const parties = authorizedParties(env);
+    if (parties) {
+      if (claims.azp) {
+        if (!parties.includes(claims.azp)) throw new Error("invalid authorized party");
+      } else if (!isNativeBearerRequest(request)) {
+        throw new Error("missing authorized party");
+      }
+    }
     if (!claims.sub) throw new Error("missing user");
     return { userId: claims.sub };
   } catch (error) {

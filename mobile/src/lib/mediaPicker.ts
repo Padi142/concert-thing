@@ -117,15 +117,19 @@ async function enqueueAsset(asset: PickedAsset, showId: string | null): Promise<
   let localUri: string | null = null;
   try {
     localUri = await copyToOwnedStorage(asset, id);
+    const copiedInfo = await FileSystem.getInfoAsync(localUri);
+    const copiedSize = copiedInfo && "size" in copiedInfo && typeof copiedInfo.size === "number" ? copiedInfo.size : 0;
+    const byteSize = copiedSize > 0 ? copiedSize : asset.size;
+    if (byteSize <= 0) throw new Error("The selected media file is empty or unreadable.");
     const capturedAt = asset.capturedAt ?? (asset.mimeType.startsWith("video/")
-      ? await embeddedVideoTimestamp(asset.size, (start, end) => readRange(localUri!, start, end))
+      ? await embeddedVideoTimestamp(byteSize, (start, end) => readRange(localUri!, start, end))
       : null);
     const upload = createQueueUpload({
       id,
       localUri,
       originalName: asset.name,
       contentType: asset.mimeType,
-      byteSize: asset.size,
+      byteSize,
       accountId,
       capturedAt,
       durationMs: asset.durationMs,
@@ -150,16 +154,16 @@ export async function enqueueAssets(
   showId: string | null = null,
   onProgress?: (progress: EnqueueProgress) => void,
 ): Promise<EnqueueResult> {
-  const eligible = assets.filter((asset) => asset.size && (asset.mimeType.startsWith("image/") || asset.mimeType.startsWith("video/")));
+  const eligible = assets.filter((asset) => asset.mimeType.startsWith("image/") || asset.mimeType.startsWith("video/"));
   const queued: QueueUpload[] = [];
-  let failed = 0;
+  let failed = assets.length - eligible.length;
   for (const asset of eligible) {
     try {
       queued.push(await enqueueAsset(asset, showId));
     } catch {
       failed += 1;
     }
-    onProgress?.({ enqueued: queued.length, failed, total: eligible.length });
+    onProgress?.({ enqueued: queued.length, failed, total: assets.length });
   }
   return { queued, failed };
 }

@@ -13,4 +13,6 @@ mobile/builds/
 mobile/modules/**/android/build/
 mobile/modules/**/android/.gradle/
 mobile/modules/**/android/.cxx/
+*.apk
+*.aab
 .DS_Store

@@ -1,11 +1,12 @@
 import type { Env } from "./env";
+import { adminStatus, createPromotion, listAdminUsers } from "./admin";
 import { authenticate, claimLegacyData } from "./auth";
 import { downloadAndroidApk } from "./downloads";
 import { HttpError, json } from "./http";
 import { assignMedia, beginUpload, cancelUpload, completeUpload, configureUpload, deleteMedia, importMediaToStream, listMedia, serveMedia, serveStreamSource, streamPlayback, uploadPart, uploadStatus } from "./media";
 import { createShow, listShows } from "./shows";
 import { addManualSongMatch, deleteSongMatch, failRecognitionAttempt, listSongMatches, prepareRecognitionUpload, recognitionStatus, requestRecognition, reviewSongMatch, serveRecognitionSource, submitRecognition } from "./recognition";
-import { createShowShare, createVideoShare, getPublicShow, revokeShowShare, revokeVideoShare, servePublicShowMedia, servePublicVideo, showShareStatus, videoShareStatus } from "./sharing";
+import { createShowShare, createVideoShare, getPublicShow, revokeShowShare, revokeVideoShare, servePublicShowMedia, servePublicVideo, servePublicVideoPreview, showShareStatus, videoShareStatus } from "./sharing";
 import { getStorageQuota } from "./storage";
 
 export async function handle(request: Request, env: Env): Promise<Response> {
@@ -22,10 +23,15 @@ export async function handle(request: Request, env: Env): Promise<Response> {
   if (publicShow && method === "GET") return getPublicShow(request, env, publicShow[1]);
   const publicMedia = /^\/api\/public\/shows\/((?:[A-Za-z0-9]{6}|[a-f0-9]{64}))\/media\/([^/]+)\/content$/.exec(path);
   if (publicMedia && (method === "GET" || method === "HEAD")) return servePublicShowMedia(request, env, publicMedia[1], publicMedia[2]);
+  const publicVideoPreview = /^\/video\/((?:[A-Za-z0-9]{6}|[a-f0-9]{64}))\/?$/.exec(path);
+  if (publicVideoPreview && (method === "GET" || method === "HEAD")) return servePublicVideoPreview(request, env, publicVideoPreview[1]);
   const publicVideo = /^\/video\/((?:[A-Za-z0-9]{6}|[a-f0-9]{64}))\.mp4$/.exec(path);
   if (publicVideo && (method === "GET" || method === "HEAD")) return servePublicVideo(request, env, publicVideo[1]);
   const auth = await authenticate(request, env);
   if (path === "/api/account/claim-legacy" && method === "POST") return claimLegacyData(env, auth);
+  if (path === "/api/admin/status" && method === "GET") return adminStatus(env, auth);
+  if (path === "/api/admin/users" && method === "GET") return listAdminUsers(env, auth);
+  if (path === "/api/admin/promotions" && method === "POST") return createPromotion(request, env, auth);
   if (path === "/api/account/storage" && method === "GET") {
     return json(await getStorageQuota(env.DB, auth.userId));
   }

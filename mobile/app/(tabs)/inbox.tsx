@@ -26,7 +26,7 @@ export default function InboxScreen() {
   }
   return <SafeAreaView edges={["top"]} className="flex-1 bg-canvas">
     <ScrollView refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await refresh(); setRefreshing(false); }} tintColor={tokens.colors.accent} />} contentContainerStyle={{ paddingTop: 12, paddingBottom: 32 }}>
-      <Heading eyebrow="Needs a decision">Inbox</Heading>
+      <Heading>Inbox</Heading>
       <Text className="mx-5 mb-4 font-sans text-[15px] leading-5 text-muted">Files without a single confident event stay here until you place them.</Text>
       <SearchField value={query} onChangeText={setQuery} placeholder="Search unassigned files" />
       {loading && !media.length ? <LoadingLine label="Checking Inbox" /> : null}

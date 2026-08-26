@@ -424,6 +424,7 @@ export type ServeMediaOptions = {
   mediaType?: "photo" | "video";
   isPublic?: boolean;
   download?: boolean;
+  contentType?: string;
 };
 
 export async function serveMedia(request: Request, env: Env, mediaId: string, options: ServeMediaOptions = {}): Promise<Response> {
@@ -451,13 +452,18 @@ export async function serveMedia(request: Request, env: Env, mediaId: string, op
   const object = request.method === "HEAD" ? null : await env.MEDIA.get(row.object_key, range ? { range } : undefined);
   if (request.method !== "HEAD" && !object) throw new HttpError(404, "Original media is missing");
   const headers = new Headers({
-    "content-type": row.content_type,
+    "content-type": options.contentType ?? row.content_type,
     "content-length": String(range?.length ?? head.size),
     "accept-ranges": "bytes",
     "cache-control": options.isPublic ? "public, max-age=300" : "private, max-age=3600",
     "etag": head.httpEtag,
     "content-disposition": `${options.download ? "attachment" : "inline"}; filename*=UTF-8''${encodeURIComponent(row.original_name)}`
   });
+  if (options.isPublic) {
+    headers.set("access-control-allow-origin", "*");
+    headers.set("cross-origin-resource-policy", "cross-origin");
+    headers.set("x-content-type-options", "nosniff");
+  }
   if (range) headers.set("content-range", `bytes ${range.offset}-${range.offset + range.length - 1}/${head.size}`);
   return new Response(object?.body ?? null, { status: range ? 206 : 200, headers });
 }

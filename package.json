@@ -7,12 +7,14 @@
   "scripts": {
     "build": "vite build",
     "test:upload": "esbuild test/upload-state.test.ts --bundle --platform=node --format=esm --outfile=.upload-state-test.mjs >/dev/null && node .upload-state-test.mjs && rm .upload-state-test.mjs",
+    "test:admin": "esbuild test/admin.test.ts --bundle --platform=node --format=esm --outfile=.admin-test.mjs >/dev/null && node .admin-test.mjs && rm .admin-test.mjs",
+    "test:auth": "esbuild test/auth.test.ts --bundle --platform=node --format=esm --outfile=.auth-test.mjs >/dev/null && node .auth-test.mjs && rm .auth-test.mjs",
     "test:recognition": "for test in recognition-provider recognition-state; do esbuild test/$test.test.ts --bundle --platform=node --format=esm --outfile=.$test-test.mjs >/dev/null && node .$test-test.mjs && rm .$test-test.mjs || exit 1; done",
     "test:sharing": "esbuild test/show-sharing.test.ts --bundle --platform=node --format=esm --outfile=.show-sharing-test.mjs >/dev/null && node .show-sharing-test.mjs && rm .show-sharing-test.mjs",
     "test:downloads": "esbuild test/downloads.test.ts --bundle --platform=node --format=esm --outfile=.downloads-test.mjs >/dev/null && node .downloads-test.mjs && rm .downloads-test.mjs",
     "test:tenancy": "esbuild test/tenant-isolation.test.ts --bundle --platform=node --format=esm --outfile=.tenant-isolation-test.mjs >/dev/null && node .tenant-isolation-test.mjs && rm .tenant-isolation-test.mjs",
     "test:storage": "for test in storage-quota storage-ui; do esbuild test/$test.test.ts --bundle --platform=node --format=esm --outfile=.$test-test.mjs >/dev/null && node .$test-test.mjs && rm .$test-test.mjs || exit 1; done",
-    "test": "pnpm run test:upload && pnpm run test:recognition && pnpm run test:sharing && pnpm run test:downloads && pnpm run test:tenancy && pnpm run test:storage",
+    "test": "pnpm run test:upload && pnpm run test:admin && pnpm run test:auth && pnpm run test:recognition && pnpm run test:sharing && pnpm run test:downloads && pnpm run test:tenancy && pnpm run test:storage",
     "check": "pnpm run test && pnpm exec tsc --noEmit && pnpm exec vite build",
     "deploy": "pnpm run check && pnpm exec wrangler deploy",
     "termux:shim": "node scripts/termux-wrangler-shim.mjs"

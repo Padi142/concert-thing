@@ -101,7 +101,7 @@ export default function QueueScreen() {
   }
   return <SafeAreaView edges={["top"]} className="flex-1 bg-canvas">
     <ScrollView refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await Promise.all([refresh(), refreshStorage()]); setRefreshing(false); }} tintColor={tokens.colors.accent} />} contentContainerStyle={{ paddingTop: 12, paddingBottom: 32 }}>
-      <Heading eyebrow="Durable local work" action={<IconButton icon="refresh" label="Resume upload queue" onPress={() => void resumeNow()} tone="accent" />}>Upload queue</Heading>
+      <Heading action={<IconButton icon="refresh" label="Resume upload queue" onPress={() => void resumeNow()} tone="accent" />}>Upload queue</Heading>
       <StorageMeter storage={storage} compact loading={storageLoading} />
       <View className="mx-5 mb-5 mt-4 flex-row gap-3">
         <View className="flex-1 rounded-[12px] border border-control bg-surface px-4 py-3">

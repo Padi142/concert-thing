@@ -38,7 +38,7 @@ export async function getLoadedClerk() {
 
 export async function getSessionToken(): Promise<string | null> {
   const clerk = await getLoadedClerk();
-  return clerk?.session?.getToken() ?? null;
+  return (await clerk?.session?.getToken()) ?? null;
 }
 
 export async function getCurrentUserId(): Promise<string | null> {

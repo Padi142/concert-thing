@@ -10,3 +10,15 @@ export type PublicSong = Pick<SongMatch, "id" | "title" | "artist" | "start_ms" 
 export type PublicStream = { status: string; iframeUrl?: string; hlsUrl?: string; thumbnailUrl?: string; error?: string | null };
 export type PublicVideo = Pick<MediaItem, "id" | "original_name" | "content_type" | "byte_size" | "duration_ms" | "captured_at" | "created_at"> & { stream: PublicStream; songs: PublicSong[]; download_url: string };
 export type PublicShowArchive = { show: Show; videos: PublicVideo[] };
+export type AdminStatus = { isAdmin: boolean };
+export type AdminUser = {
+  userId: string;
+  plan: { key: string; name: string };
+  allowanceBytes: number;
+  promotionBytes: number;
+  effectiveQuotaBytes: number;
+  usedBytes: number;
+  reservedBytes: number;
+  uploadCount: number;
+  uploadBytes: number;
+};

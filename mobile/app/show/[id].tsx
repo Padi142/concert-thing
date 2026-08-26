@@ -58,7 +58,7 @@ export default function ShowDetailScreen() {
 
   return <SafeAreaView edges={["top"]} className="flex-1 bg-canvas">
     <ScrollView contentContainerStyle={{ paddingTop: 12, paddingBottom: 32 }}>
-      <View className="mb-5 flex-row items-center px-5"><IconButton icon="arrow-back" label="Go back" onPress={() => router.back()} /><View className="ml-3 min-w-0 flex-1"><Text className="font-sans text-[12px] font-semibold uppercase tracking-[1.2px] text-muted">Show</Text><Text numberOfLines={1} className="font-display text-[25px] text-ink">{show?.title ?? "Show"}</Text></View><IconButton icon="ellipsis-horizontal" label="Show options" onPress={() => setMenuOpen(true)} /></View>
+      <View className="mb-5 flex-row items-center px-5"><IconButton icon="arrow-back" label="Go back" onPress={() => router.back()} /><View className="ml-3 min-w-0 flex-1"><Text numberOfLines={1} className="font-display text-[25px] text-ink">{show?.title ?? "Show"}</Text></View><IconButton icon="ellipsis-horizontal" label="Show options" onPress={() => setMenuOpen(true)} /></View>
       <Hairline className="mb-4" />
       {!show && loading ? <LoadingLine label="Loading show" /> : null}
       {error ? <ErrorLine message={error} onRetry={refresh} /> : null}

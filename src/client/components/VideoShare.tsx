@@ -4,9 +4,9 @@ import { api } from "../api";
 import { copyLink } from "./ShowShare";
 import type { Report, VideoShare as VideoShareState } from "../types";
 
-type Props = { mediaId: string; mediaName: string; report: Report };
+type Props = { mediaId: string; report: Report };
 
-export default function VideoShare({ mediaId, mediaName, report }: Props) {
+export default function VideoShare({ mediaId, report }: Props) {
   const [share, setShare] = useState<VideoShareState | null>(null);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -29,7 +29,7 @@ export default function VideoShare({ mediaId, mediaName, report }: Props) {
       if (!next.url) throw new Error("Could not create the public video link");
       if (navigator.share) {
         try {
-          await navigator.share({ title: mediaName, text: `Watch ${mediaName}`, url: next.url });
+          await navigator.share({ url: next.url });
           report("Share sheet opened");
           return;
         } catch (error) {
@@ -76,7 +76,7 @@ export default function VideoShare({ mediaId, mediaName, report }: Props) {
 
   return <section className="mt-5 border-l-2 border-blue py-1 pl-4">
     <div className="flex items-center gap-2"><Link2 size={17} className="text-blue" /><h2 className="font-display text-[18px]">Share this video</h2></div>
-    <p className="mb-3 mt-1 max-w-xl text-sm leading-5 text-muted">The link opens the video directly, so Discord and similar apps can play it inline. Anyone with it can watch the video.</p>
+    <p className="mb-3 mt-1 max-w-xl text-sm leading-5 text-muted">The link includes a video preview and an inline player. Anyone with it can watch the video.</p>
     {share.url ? <>
       <div className="flex flex-wrap gap-2">
         <button type="button" className="btn-primary" disabled={busy} onClick={() => void shareLink()}>{busy ? <LoaderCircle size={16} className="animate-spin" /> : <Share2 size={16} />}Share video</button>

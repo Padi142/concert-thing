@@ -30,4 +30,4 @@ fi
 
 echo "Using JAVA_HOME=$JAVA_HOME"
 java -version
-pnpm exec eas build --platform android --profile development --local "$@"
+pnpm exec eas build --platform android --profile production --local "$@"
