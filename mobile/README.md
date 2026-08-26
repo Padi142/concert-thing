@@ -21,10 +21,14 @@ pnpm exec expo run:android
 Sign in or create an account from the first screen. The default archive URL is `https://shows.krejzac.cz`; it can be changed in Settings. API requests obtain a fresh Clerk session token, and no permanent Owner token is stored on the device.
 
 Native sign-in opens Clerk's hosted Account Portal through the system browser.
+On iOS, the first screen also offers Apple's native Sign in with Apple button;
+Android and web use the hosted Apple OAuth flow from the same Account Portal.
 This keeps Google OAuth on the browser callback path instead of requiring the
 Android build's signing certificate to be registered for native Credential
 Manager sign-in. The Clerk Expo plugin registers the Android
 `clerk://<package>.hosted-callback` intent filter used to return to the app.
+Native Apple authentication requires an iOS development or release build;
+Expo Go cannot load the native module.
 Automatic song recognition is opt-in from Settings. When enabled, each newly completed video upload is submitted to the app-level recognition queue before the upload background task finishes.
 
 Useful checks:

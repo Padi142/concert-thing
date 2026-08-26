@@ -9,6 +9,7 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
+      "usesAppleSignIn": true,
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "Concert Thing needs your permission to archive concert photos and videos.",
         "NSPhotoLibraryAddUsageDescription": "Concert Thing can save exported concert memories to your photo library.",
@@ -76,7 +77,9 @@
       ],
       "expo-sqlite",
       "@clerk/expo",
-      "expo-web-browser"
+      "expo-apple-authentication",
+      "expo-web-browser",
+      "./plugins/withAndroidAppearance"
     ],
     "extra": {
       "router": {},
