@@ -126,7 +126,7 @@ export default function Archive({ report, isAdmin = false }: { report: Report; i
     <main id="top" className={`mx-auto pb-32 pt-5 md:pb-16 md:pt-9 ${view.name === "admin" ? "max-w-5xl px-5 md:px-0" : "max-w-5xl"}`}>
       {view.name === "admin" && isAdmin && <AdminPanel report={report} />}
       {view.name === "library" && <>
-        <Heading eyebrow="Concert archive" action={<button type="button" className="icon-btn !bg-blue !text-accentInk" aria-label="Add photos or videos" onClick={() => setView({ name: "queue" })}><Plus size={22} /></button>}>Library</Heading>
+        <Heading eyebrow="Concert Thing" action={<button type="button" className="icon-btn !bg-blue !text-accentInk" aria-label="Add photos or videos" onClick={() => setView({ name: "queue" })}><Plus size={22} /></button>}>Library</Heading>
         <div className="px-5 md:px-0">
           <SearchField value={librarySearch} onChange={setLibrarySearch} placeholder="Search files, shows, or songs" label="Search Library by file, Show, or Song" />
           {loading && !media.length ? <p className="py-6 text-[15px] text-muted">Loading your archive…</p> : null}
@@ -134,10 +134,12 @@ export default function Archive({ report, isAdmin = false }: { report: Report; i
         </div>
         {!loading && !error && !media.length ? <div className="px-5 md:px-0"><EmptyState icon={Images} title="Your archive starts here" detail="Select photos or videos to upload. Completed items appear here, grouped under their Show." /></div> : null}
         {!loading && !error && !!media.length && !libraryGroups.length ? <div className="px-5 md:px-0"><EmptyState icon={SearchX} title="No matches" detail="Try a filename, Show, or confirmed Song title." /></div> : null}
-        {libraryGroups.map(({ show, items }) => <section key={show?.id ?? "inbox"} className="mb-8">
+        {libraryGroups.map(({ show, items }) => <section key={show?.id ?? "unassigned-videos"} className="mb-8">
           <div className="mb-3 px-5 md:px-0">
-            <div className="font-display text-xl">{show ? show.title : "Unassigned"}</div>
-            <div className="mt-1 text-sm text-muted">{show ? `${show.venue}${show.starts_at ? ` · ${new Date(show.starts_at).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}` : ""}` : "Inbox"} · {items.length} {items.length === 1 ? "item" : "items"}</div>
+            {show
+              ? <button type="button" className="block text-left font-display text-xl transition hover:text-blue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue" aria-label={`Open ${show.title}`} onClick={() => setView({ name: "show", id: show.id })}>{show.title}</button>
+              : <div className="font-display text-xl">Unassigned videos</div>}
+            <div className="mt-1 text-sm text-muted">{show ? `${show.venue}${show.starts_at ? ` · ${new Date(show.starts_at).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}` : ""}` : "Unassigned videos"} · {items.length} {items.length === 1 ? "item" : "items"}</div>
             <div className="hairline mt-3" />
           </div>
           <MediaGrid items={items} shows={shows} matches={matches} onOpen={setOpenMediaId} onChanged={() => void refresh()} report={report} />
@@ -145,11 +147,11 @@ export default function Archive({ report, isAdmin = false }: { report: Report; i
       </>}
 
       {view.name === "inbox" && <>
-        <Heading eyebrow="Needs review" action={<span className="text-[13px] font-semibold text-muted">{inbox.length} waiting</span>}>Inbox</Heading>
+        <Heading eyebrow="Needs review" action={<span className="text-[13px] font-semibold text-muted">{inbox.length} waiting</span>}>Unassigned videos</Heading>
         <div className="px-5 md:px-0">
-          {loading && !media.length ? <p className="py-6 text-[15px] text-muted">Loading inbox…</p> : null}
+          {loading && !media.length ? <p className="py-6 text-[15px] text-muted">Loading unassigned videos…</p> : null}
           <ErrorLine message={error ?? ""} onRetry={() => void refresh()} />
-          {!loading && !error && !inbox.length ? <EmptyState icon={Images} title="Inbox is clear" detail="Every media item is assigned to a Show. New uploads land here when confidence is too low for automatic assignment." /> : null}
+          {!loading && !error && !inbox.length ? <EmptyState icon={Images} title="No unassigned videos" detail="Every media item is assigned to a Show. New uploads land here when confidence is too low for automatic assignment." /> : null}
           {!!inbox.length && <MediaGrid items={inbox} shows={shows} matches={matches} onOpen={setOpenMediaId} onChanged={() => void refresh()} report={report} />}
         </div>
       </>}

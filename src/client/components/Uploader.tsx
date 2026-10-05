@@ -146,7 +146,7 @@ export default function Uploader({ shows, storage, onStorageChanged, onMediaComp
     onStorageChanged();
     const status = completed.assignment?.method === "automatic"
       ? "Assigned automatically"
-      : completed.assignment ? "Assigned" : "In Inbox";
+      : completed.assignment ? "Assigned" : "In Unassigned videos";
     patch(queueId, { progress: 100, status, active: false, resumable: false });
     onMediaComplete();
     if (file.type.startsWith("video/")) {

@@ -1,4 +1,5 @@
 import * as BackgroundTask from "expo-background-task";
+import { File as ExpoFile, UploadType } from "expo-file-system";
 import * as FileSystem from "expo-file-system/legacy";
 import * as TaskManager from "expo-task-manager";
 import {
@@ -79,9 +80,8 @@ function parsePartReceipt(body: string, partNumber: number): { partNumber: numbe
 }
 
 async function uploadPartFromTemporaryFile(upload: QueueUpload, part: QueuePart, accountId: string): Promise<{ partNumber: number; etag: string } | null> {
-  const createTask = (FileSystem as unknown as { createUploadTask?: Function }).createUploadTask;
   const base = await loadApiConfig();
-  if (!createTask || !base || !FileSystem.cacheDirectory) return null;
+  if (!base || !FileSystem.cacheDirectory) return null;
   const token = await getSessionToken();
   if (!token || await getCurrentUserId() !== accountId) throw new ApiError("The active account changed. Sign in again to resume uploads.", 401);
   const tempDirectory = `${FileSystem.cacheDirectory}concert-thing-parts/`;
@@ -92,13 +92,15 @@ async function uploadPartFromTemporaryFile(upload: QueueUpload, part: QueuePart,
     // 8 MiB in JavaScript, creating hundreds of milliseconds of UI stalls.
     const encoded = await readPartBase64(upload.local_uri, part.byte_start, part.byte_end);
     await FileSystem.writeAsStringAsync(tempUri, encoded, { encoding: FileSystem.EncodingType.Base64 });
-    const task = createTask(
+    // The modern API uses a stable, bundle-scoped background URLSession on
+    // iOS. The legacy uploader created a new random session identifier, so the
+    // OS could not reliably reconnect the app to an in-flight transfer.
+    const task = new ExpoFile(tempUri).createUploadTask(
       `${base.baseUrl}/api/uploads/${encodeURIComponent(upload.media_id!)}/parts/${part.part_number}`,
-      tempUri,
       {
         httpMethod: "PUT",
-        uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
-        sessionType: FileSystem.FileSystemSessionType.BACKGROUND,
+        uploadType: UploadType.BINARY_CONTENT,
+        sessionType: "background",
         headers: {
           authorization: `Bearer ${token}`,
           "content-type": upload.content_type,
@@ -107,7 +109,7 @@ async function uploadPartFromTemporaryFile(upload: QueueUpload, part: QueuePart,
       },
     );
     const response = await task.uploadAsync();
-    if (!response || response.status < 200 || response.status >= 300) throw new Error(`Part ${part.part_number} failed (${response?.status ?? "unknown"})`);
+    if (response.status < 200 || response.status >= 300) throw new Error(`Part ${part.part_number} failed (${response.status})`);
     return parsePartReceipt(response.body, part.part_number);
   } finally {
     await FileSystem.deleteAsync(tempUri, { idempotent: true }).catch(() => undefined);

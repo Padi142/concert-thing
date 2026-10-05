@@ -1,130 +1,194 @@
-# Concert Archive
+<div align="center">
 
-A private, account-scoped archive service for concert photos and videos, deployed on Cloudflare.
+<img src="public/icon-192.png" width="96" alt="Concert Thing icon" />
 
-## Implemented vertical slice
+# Concert Thing
 
-- Clerk sign-up and sign-in for the web and Expo apps, with short-lived session JWTs verified by the Worker
-- Strict account isolation for Shows, Media Items, uploads, Stream playback, recognition, and Share Link management
-- Create Shows with Artists, venue, locality, times, and timezone
-- Resumable 8 MiB multipart uploads with two-file concurrency and live completion updates
-- Per-Owner Storage Allowances with atomic reservations, additive grants, and plan replacement semantics
-- Originals stored privately in R2
-- Media Item and Show metadata stored in D1
-- Explicit upload-to-Show Assignment or automatic Assignment from embedded MP4/file timestamps
-- Ambiguous Media Items enter the Inbox for explicit Assignment
-- Private photo display and adaptive Cloudflare Stream video playback with R2 fallback
-- Responsive React + Tailwind interface and installable web manifest
-- Video duration in the Inbox and Library
-- Automatic, asynchronous ACRCloud Song recognition using private direct video uploads
-- Timestamped Song Match review: confirm, reject, edit, or manually add
-- Library search by confirmed Song title or primary Artist
-- SHA-256 duplicate detection prevents the same video bytes from being uploaded twice
-- Revocable public Show links let anyone with the URL watch and download that Show's ready videos
-- Revocable per-video links expose one ready video through a metadata preview page with a direct inline media stream for compatible clients
+**A private, multi-tenant archive for concert photos and videos, with automatic song recognition, adaptive streaming, and shareable show pages.**
 
-Public links expose only ready videos assigned to that Show. Visitors watch short-lived signed Cloudflare Stream versions, see non-rejected recognized Songs and their timestamps, and download the private R2 original only through the Download action. Photos, other Shows, and owner controls remain private. Turning off a link invalidates its unguessable token.
+Built on Cloudflare's edge stack, with a React web app and a native Expo companion that keeps uploading in the background.
 
-Automatic Assignment occurs only when a media timestamp falls within exactly one Show. A Show without an end time uses a conservative six-hour window from its start; overlapping or unmatched windows leave the Media Item in the Inbox. Owner Assignment always takes precedence.
+[**Live app →**](https://shows.krejzac.cz)
 
-## Modules
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
+![React](https://img.shields.io/badge/React-20232A?logo=react&logoColor=61DAFB)
+![Cloudflare Workers](https://img.shields.io/badge/Cloudflare_Workers-F38020?logo=cloudflare&logoColor=white)
+![D1 · R2 · Stream](https://img.shields.io/badge/D1_·_R2_·_Stream-F38020?logo=cloudflare&logoColor=white)
+![Expo](https://img.shields.io/badge/Expo_SDK_57-000020?logo=expo&logoColor=white)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-06B6D4?logo=tailwindcss&logoColor=white)
+![Clerk](https://img.shields.io/badge/Clerk_Auth-6C47FF?logo=clerk&logoColor=white)
+
+<img src="docs/screenshots/library.png" alt="Library grouped by Show, with recognized song titles on video tiles" width="100%" />
+
+</div>
+
+## Why
+
+After a concert, your phone holds dozens of multi-hundred-megabyte clips with names like `IMG_4810.MOV`. Concert Thing turns them into an organised archive. Uploads are matched to the right show from their capture timestamps, every video is scanned for the songs it contains, and you can share a whole show with friends through one link, without making the rest of your library public.
+
+## Screenshots
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/show.png" alt="Show page with public link and song recognition controls" /><br /><sub><b>Show page</b>: artists, revocable public link, bulk song re-scan</sub></td>
+    <td width="50%"><img src="docs/screenshots/media-detail.png" alt="Video detail with timestamped recognized songs to review" /><br /><sub><b>Song review</b>: timestamped matches to confirm, edit, or dismiss</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/public-share.png" alt="Public shared show page with video player and song list" /><br /><sub><b>Public share page</b>: signed Stream playback and original downloads, no account needed</sub></td>
+    <td width="50%"><img src="docs/screenshots/queue.png" alt="Upload queue with storage allowance meter" /><br /><sub><b>Upload queue</b>: storage allowance with reserved in-flight bytes</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/library-dark.png" alt="Library in dark mode" /><br /><sub><b>Dark mode</b>: follows the system colour scheme</sub></td>
+    <td width="50%"><img src="docs/screenshots/admin.png" alt="Admin panel listing users, usage and storage promotions" /><br /><sub><b>Admin panel</b>: per-user usage and additive storage grants</sub></td>
+  </tr>
+</table>
+
+<p align="center">
+  <img src="docs/screenshots/mobile-library.png" alt="Responsive library on a phone" width="260" />
+  &nbsp;&nbsp;
+  <img src="docs/screenshots/mobile-detail.png" alt="Video detail sheet on a phone" width="260" />
+</p>
+
+> Screenshots use generated demo data. See [Regenerating screenshots](#regenerating-screenshots).
+
+## Features
+
+- **Resumable uploads at scale.** 8 MiB multipart uploads stream directly to R2, two files run concurrently, interrupted files resume, and SHA-256 hashing rejects duplicate videos before any bytes are sent.
+- **Automatic show assignment.** Capture times from MP4 metadata or file timestamps are matched against show windows. Ambiguous media goes to an *Unassigned videos* inbox, and an owner's manual choice always overrides automatic assignment.
+- **Song recognition.** Every video is submitted asynchronously to ACRCloud. Matches come back with timestamps and confidence and can be confirmed, edited, rejected, or added by hand. The library is searchable by song and artist.
+- **Adaptive streaming.** Originals stay private in R2. Cloudflare Stream transcodes them for adaptive playback behind short-lived signed tokens, and the app falls back to authenticated R2 range requests while encoding is still running.
+- **Sharing.** Revocable, unguessable links work for a whole show or a single video. Visitors can watch, see the recognized setlist, and download originals. Photos, other shows, and owner controls stay private.
+- **Multi-tenant accounts and quotas.** Clerk authentication on web and mobile (including native Sign in with Apple), strict per-account isolation, and per-owner storage allowances with atomic reservations, plan tiers, and additive grants managed from an admin panel.
+- **Native mobile companion.** An Expo app with a durable SQLite upload queue and a custom Kotlin background-upload module that keeps transferring while the app is suspended.
+- **Installable PWA** with a responsive layout that also works on phones, plus automatic dark mode.
+
+## Architecture
+
+```mermaid
+flowchart LR
+  subgraph Clients
+    Web["React + Vite SPA<br/>(installable PWA)"]
+    Mobile["Expo app<br/>SQLite queue + native uploader"]
+    Visitor["Public visitor"]
+  end
+
+  subgraph Cloudflare
+    Worker["Worker<br/>HTTP API · auth · cron"]
+    D1[("D1<br/>shows, media, songs, quotas")]
+    R2[("R2<br/>private originals")]
+    Stream["Stream<br/>adaptive HLS, signed tokens"]
+  end
+
+  Clerk["Clerk<br/>session JWTs"]
+  ACR["ACRCloud<br/>file scanning"]
+
+  Web -- "Bearer JWT" --> Worker
+  Mobile -- "Bearer JWT" --> Worker
+  Visitor -- "share token" --> Worker
+  Web & Mobile -. sign in .-> Clerk
+  Worker --> D1
+  Worker -- "multipart upload" --> R2
+  Worker -- "import via capability URL" --> Stream
+  Worker -- "submit job" --> ACR
+  ACR -. "pulls original via temporary URL" .-> R2
+```
+
+The Worker's HTTP interface is the only seam between clients and storage, and D1, R2, and Stream bindings never leave the server modules. An hourly cron retries abandoned uploads and deletions, cleans Stream derivatives, and reconciles storage counters.
+
+## Engineering highlights
+
+- **Idempotent, crash-safe uploads.** The mobile queue persists every item in SQLite and sends an account-scoped `clientUploadId`, so a lost response never produces a duplicate. Items blocked by quota keep their local copy and wait for an explicit retry rather than looping in the background.
+- **Race-free quota enforcement.** In-flight uploads reserve their declared size through conditional D1 updates, so several parallel uploads cannot overshoot an allowance. Reservations expire after seven idle days, and usage is released only after R2 confirms that an original has been deleted.
+- **Provider-neutral recognition.** ACRCloud sits behind a `RecognitionProvider` interface. Jobs are idempotent and retried once, and re-runs only update *pending* candidates, so confirmed, edited, or manual decisions are never overwritten.
+- **Original bytes never leave private storage.** ACRCloud and Stream receive temporary, unguessable capability URLs rather than public objects. Public pages get short-lived signed Stream tokens, and downloads go through an explicit action.
+- **Tenant isolation is tested.** A dedicated test suite covers cross-account access to shows, media, uploads, playback, recognition, and share links.
+
+## Tech stack
+
+| Layer | Technology |
+| --- | --- |
+| Web client | React, TypeScript, Vite, Tailwind CSS, lucide-react |
+| API | Cloudflare Workers (TypeScript), cron triggers |
+| Data | Cloudflare D1 (SQLite) with 11 versioned migrations |
+| Media | Cloudflare R2 (multipart), Cloudflare Stream (adaptive HLS, signed URLs) |
+| Auth | Clerk (web, Expo, native Apple sign-in), JWT verification at the edge |
+| Recognition | ACRCloud File Scanning |
+| Mobile | Expo SDK 57, React Native, Expo Router, NativeWind, expo-sqlite, custom Kotlin module |
+
+## Project structure
 
 ```text
-src/client/               React interface
-  api.ts                  HTTP adapter used by all features
-  components/             Account, Show, upload, media, and Song Match modules
-  recognition.ts          Provider submission and retry orchestration
-  Archive.tsx             Library composition, Song search, and data refresh
+src/client/               React web app
+  api.ts                  HTTP adapter used by every feature
+  Archive.tsx             Library, Shows, inbox, and queue views
+  PublicShow.tsx          Public share page
+  AdminPanel.tsx          User usage and storage grants
+  components/             Show, upload, media, sharing, and Song Match modules
 src/server/               Worker implementation
-  router.ts               HTTP interface and route dispatch
+  router.ts               HTTP routes
   auth.ts                 Clerk verification and legacy-archive claiming
-  shows.ts                Show persistence and validation
-  media.ts                Ingestion, Assignment, search, and playback
-  storage.ts              Storage Allowance, reservation, and reconciliation rules
-  recognition/            Provider-neutral recognition and ACRCloud adapter
-  http.ts                 Shared HTTP parsing/error behavior
-src/worker.ts             Cloudflare entry point and error translation
+  media.ts                Ingestion, assignment, search, and playback
+  storage.ts              Allowances, reservations, and reconciliation
+  sharing.ts              Show and video share links
+  recognition/            Provider-neutral recognition + ACRCloud adapter
+src/worker.ts             Cloudflare entry point
 migrations/               D1 schema history
-mobile/                   Expo companion with a durable native upload queue
+mobile/                   Expo companion app (see mobile/README.md)
+test/                     Upload, auth, tenancy, sharing, storage, and recognition tests
+scripts/screenshots/      Mocked demo server + Playwright capture for README images
 ```
 
-The Worker HTTP interface is the seam between client and server. D1 and R2 bindings remain private to the server modules.
+## Getting started
 
-## Mobile companion
-
-The Expo app in [`mobile/`](mobile/) uses Clerk's SecureStore-backed session cache and sends a fresh session token to the same private Worker API. Selected photos and videos are copied into app-owned storage, recorded in account-scoped SQLite queues, and uploaded as resumable R2 multipart parts. Queue records survive relaunches; the server-side account-scoped `clientUploadId` makes upload creation idempotent if a response is lost. Items blocked by the Storage Allowance keep their local copy and wait for an explicit retry instead of looping in the background.
-
-Run the companion from its own workspace:
+Requirements: Node.js, pnpm, and a Cloudflare account with D1, R2, and Stream enabled.
 
 ```bash
 pnpm install
+pnpm test          # unit and integration tests
+pnpm run check     # tests + type check + production build
+```
+
+Configure secrets interactively. Never put values in source or shell history:
+
+```bash
+wrangler secret put CLERK_JWT_KEY
+wrangler secret put ACRCLOUD_ACCESS_TOKEN
+wrangler secret put ACRCLOUD_CONTAINER_ID
+```
+
+The web build reads `VITE_CLERK_PUBLISHABLE_KEY` from `.env.local`. To apply migrations and deploy:
+
+```bash
+pnpm exec wrangler d1 migrations apply concert-thing --remote
+pnpm run deploy
+```
+
+### Mobile companion
+
+```bash
 pnpm --filter concert-thing-mobile run typecheck
 pnpm --filter concert-thing-mobile test
-pnpm --filter concert-thing-mobile exec expo run:ios
-# or: pnpm --filter concert-thing-mobile exec expo run:android
+pnpm --filter concert-thing-mobile exec expo run:ios   # or expo run:android
 ```
 
-A development build is required for native background behavior. Normal app suspension can continue a native transfer, and deferred background work resumes the durable queue when the OS permits. A deliberate force-quit stops iOS background transfers; reopening the app resumes from SQLite. See [`mobile/README.md`](mobile/README.md) for setup and platform details.
+Native background transfers need a development build. See [`mobile/README.md`](mobile/README.md) for setup, Android JDK requirements, and local EAS builds.
 
-## Song recognition
+### Termux
 
-ACRCloud is isolated behind `RecognitionProvider`. After R2 upload completes, the Worker gives ACRCloud a temporary, unguessable download capability for the private original. ACRCloud pulls and processes the video asynchronously, so the browser can close after submission. Provider failure does not affect the private R2 original.
+Wrangler's local runtime does not support Android/Termux. Install with `pnpm install --ignore-scripts`, then run `pnpm run termux:shim` before `check` or `deploy`. The shim allows remote Wrangler commands only.
 
-Recognition is configured for the ACRCloud File Scanning container in `eu-west-1`. There is no application-level monthly job limit; account billing and limits are managed in ACRCloud.
+### Regenerating screenshots
 
-Store credentials interactively; never put values in source or shell history:
-
-   ```bash
-   wrangler secret put ACRCLOUD_ACCESS_TOKEN
-   wrangler secret put ACRCLOUD_CONTAINER_ID
-   ```
-
-Clerk setup uses the CLI-linked application. The frontend publishable keys are build-time public configuration; the Worker verifies session tokens with Clerk's public JWT key stored as `CLERK_JWT_KEY` in Wrangler secrets.
-
-Apply migrations and deploy:
-
-   ```bash
-   pnpm exec wrangler d1 migrations apply concert-thing --remote
-   pnpm run deploy
-   ```
-
-Jobs are idempotent, have one retry, and expose completed, no-match, unsupported, and failed states. Machine reruns update only pending candidates; confirmed, rejected, edited, and manual Owner decisions are never overwritten. See [`docs/research/music-recognition.md`](docs/research/music-recognition.md).
-
-## Video playback
-
-Originals remain private in R2. The Stream binding imports each video through a temporary capability URL, transcodes it for adaptive playback, and requires short-lived signed playback tokens. The interface falls back to authenticated R2 range playback while encoding is in progress or if Stream is unavailable.
-
-## Storage allowance
-
-Each Owner has one decimal-byte Storage Allowance: the current Plan base plus active additive Storage Grants. Only completed R2 originals count as Storage Usage; in-progress uploads reserve their declared size. The authenticated storage endpoint drives the web and mobile meters, while D1 conditional updates remain authoritative when several uploads begin together.
-
-Reservations expire after seven days without meaningful upload activity. Hourly maintenance retries abandoned uploads and Media Item deletions, cleans Stream derivatives independently, and conservatively reconciles counters from D1. Deleting a Media Item hides it immediately, but releases Storage Usage only after R2 confirms the original is gone. Existing Library access remains available when an Owner is over its allowance; only new uploads are blocked.
-
-## Commands
+The screenshots come from the real React components, rendered against a mocked API with generated artwork:
 
 ```bash
-pnpm install
-pnpm test
-pnpm run check
-pnpm run deploy
+pnpm run screenshots:serve   # demo server on http://localhost:5199
+PLAYWRIGHT_CORE=/path/to/playwright-core CHROMIUM=/usr/bin/chromium-browser \
+  node scripts/screenshots/capture.mjs
 ```
 
-Wrangler's local runtime does not support Android/Termux. On Termux, use:
+## Behaviour notes
 
-```bash
-pnpm install --ignore-scripts
-pnpm run termux:shim
-pnpm run check
-pnpm run deploy
-```
-
-The shim only allows remote Wrangler commands; local `wrangler dev` is intentionally unsupported.
-
-## Deployed archive
-
-- URL: <https://concert-thing.padi142.workers.dev>
-- D1 database: `concert-thing`
-- R2 bucket: `concert-thing-media`
-- Clerk application: `app_3IKYFrXthX2tnKuFp6mXYDSE5Zq`
-
-The first Clerk account to sign in claims the pre-Clerk Shows and Media Items exactly once. Later accounts start with empty, isolated Libraries. The current migration snapshot is recorded in [`docs/current-uploads-summary.md`](docs/current-uploads-summary.md), with the complete non-secret list in [`docs/current-uploads.tsv`](docs/current-uploads.tsv).
+- **Assignment.** Media is assigned automatically only when its timestamp falls inside exactly one show. A show without an end time gets a conservative six-hour window, and overlapping or unmatched windows leave the item unassigned.
+- **Storage.** Each owner has one decimal-byte allowance, made up of the plan base plus active grants. Only completed originals count as usage. An owner who goes over the allowance keeps access to the library, but new uploads are blocked.
+- **Legacy data.** The first Clerk account to sign in claims the pre-Clerk archive exactly once. Later accounts start with empty, isolated libraries.

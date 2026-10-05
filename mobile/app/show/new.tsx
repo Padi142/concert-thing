@@ -92,7 +92,7 @@ export default function NewShowScreen() {
       if (failed) {
         dialog.show(
           "Show created",
-          `${assignmentIds.length - failed} videos were synced. ${failed} could not be assigned and remain in Inbox.`,
+          `${assignmentIds.length - failed} videos were synced. ${failed} could not be assigned and remain in Unassigned videos.`,
           [{ label: "Open show", onPress: () => router.replace(`/show/${show.id}`) }],
         );
       } else {
@@ -130,7 +130,7 @@ export default function NewShowScreen() {
               <View className="h-10 w-10 items-center justify-center rounded-full bg-blueSoft"><Ionicons name="sync" size={20} color={tokens.colors.accent} /></View>
               <View className="ml-3 min-w-0 flex-1">
                 <Text className="font-sans text-[16px] font-semibold text-ink">Video sync</Text>
-                <Text className="mt-0.5 font-sans text-[13px] leading-[18px] text-muted">{mediaLoading ? "Checking your Inbox…" : mediaError ? "Preview unavailable — the show can still be created." : `${assignmentIds.length} ${assignmentIds.length === 1 ? "video" : "videos"} will be added`}</Text>
+                <Text className="mt-0.5 font-sans text-[13px] leading-[18px] text-muted">{mediaLoading ? "Checking unassigned videos…" : mediaError ? "Preview unavailable — the show can still be created." : `${assignmentIds.length} ${assignmentIds.length === 1 ? "video" : "videos"} will be added`}</Text>
               </View>
               {nearbyVideos.length ? <Switch accessibilityLabel="Sync videos inside this show time" accessibilityRole="switch" hitSlop={8} value={syncNearby} onValueChange={setSyncNearby} trackColor={{ false: tokens.colors.line, true: tokens.colors.accent }} thumbColor={tokens.colors.mediaInk} /> : null}
             </View>

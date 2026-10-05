@@ -100,7 +100,7 @@ The local Android module lives in `modules/background-upload`. Because it contai
 ## Screens
 
 - Library: timeline grouped by Shows, local search, and file picker entry point.
-- Inbox: unassigned media and explicit Show assignment.
+- Unassigned videos: media without a Show and explicit Show assignment.
 - Shows: search, create form with native date/time pickers, per-Show archive, and a bulk song-recognition rerun for every ready video in a Show.
 - Media detail: signed adaptive HLS playback with an authenticated byte-range fallback, assignment, Song Match search/review, recognition, and manual song add.
 - Queue: globally reachable durable upload status, retry/cancel controls, and background behavior guidance.

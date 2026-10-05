@@ -26,14 +26,14 @@ export default function InboxScreen() {
   }
   return <SafeAreaView edges={["top"]} className="flex-1 bg-canvas">
     <ScrollView refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await refresh(); setRefreshing(false); }} tintColor={tokens.colors.accent} />} contentContainerStyle={{ paddingTop: 12, paddingBottom: 32 }}>
-      <Heading>Inbox</Heading>
+      <Heading>Unassigned videos</Heading>
       <Text className="mx-5 mb-4 font-sans text-[15px] leading-5 text-muted">Files without a single confident event stay here until you place them.</Text>
       <SearchField value={query} onChangeText={setQuery} placeholder="Search unassigned files" />
-      {loading && !media.length ? <LoadingLine label="Checking Inbox" /> : null}
+      {loading && !media.length ? <LoadingLine label="Checking unassigned videos" /> : null}
       {error ? <ErrorLine message={error} onRetry={refresh} /> : null}
-      {!loading && !error && !unassigned.length ? <EmptyState icon="checkmark-done-outline" title="Inbox is clear" detail="You’re caught up. Ambiguous uploads will wait here until you choose a Show." /> : null}
+      {!loading && !error && !unassigned.length ? <EmptyState icon="checkmark-done-outline" title="No unassigned videos" detail="You’re caught up. Ambiguous uploads will wait here until you choose a Show." /> : null}
       {unassigned.length ? <>
-        <View className="mb-3 flex-row items-center justify-between px-5"><Text className="font-display text-[20px] text-ink">Unassigned media</Text><Text className="font-sans text-[13px] text-muted">{unassigned.length}</Text></View>
+        <View className="mb-3 flex-row items-center justify-between px-5"><Text className="font-display text-[20px] text-ink">Unassigned videos</Text><Text className="font-sans text-[13px] text-muted">{unassigned.length}</Text></View>
         <Hairline className="mx-5 mb-3" />
         <MediaGrid items={unassigned} matches={songMatches} onPress={(item) => router.push(`/media/${item.id}`)} />
         <View className="mt-4 flex-row items-center justify-end px-5"><QuietButton onPress={() => setSelected(unassigned[unassigned.length - 1])}>Assign oldest</QuietButton></View>

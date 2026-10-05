@@ -1,4 +1,4 @@
-# Concert Archive
+# Concert Thing
 
 A private personal archive for organizing, identifying, finding, and selectively sharing media captured at live performances.
 
@@ -24,9 +24,9 @@ _Avoid_: Band, act
 The association of a Media Item with a Show, made automatically only when confidence is high enough; otherwise it awaits Owner review.
 _Avoid_: Date grouping, album membership
 
-**Inbox**:
+**Unassigned videos**:
 The set of Media Items whose Show assignment needs Owner review.
-_Avoid_: Unsorted album, uploads
+_Avoid_: Inbox, unsorted album, uploads
 
 **Media Item**:
 One original photo or video in the Library.

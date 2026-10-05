@@ -68,7 +68,7 @@ export default function MediaDetail({ item, shows, matches, onClose, onChanged, 
 
         <label className="mt-5 block">Assigned Show
           <select className="mt-2" aria-label={`Assign ${item.original_name} to a Show`} value={item.show_id || ""} onChange={event => void assign(event.target.value)}>
-            <option value="">Inbox — unassigned</option>
+            <option value="">Unassigned videos — unassigned</option>
             {shows.map(show => <option key={show.id} value={show.id}>{show.title}</option>)}
           </select>
           {item.assignment_method === "automatic" && <span className="mt-1 block text-xs text-subtle">Assigned automatically</span>}

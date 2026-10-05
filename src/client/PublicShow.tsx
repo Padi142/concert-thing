@@ -56,7 +56,7 @@ export default function PublicShow({ token }: { token: string }) {
   const { show, videos } = archive;
   return <main className="mx-auto min-h-screen max-w-3xl px-5 pb-16 pt-10 md:pt-16">
     <header className="mb-8">
-      <div className="eyebrow">Shared concert archive</div>
+      <div className="eyebrow">Shared from Concert Thing</div>
       <h1 className="font-display text-[34px] leading-tight md:text-[42px]">{show.title}</h1>
       <p className="mt-3 text-base">{show.venue}{show.locality ? ` · ${show.locality}` : ""}</p>
       <p className="mt-1 text-sm text-muted">{new Date(show.starts_at).toLocaleString(undefined, { dateStyle: "long", timeStyle: "short" })}</p>

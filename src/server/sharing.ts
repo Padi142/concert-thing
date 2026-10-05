@@ -155,7 +155,7 @@ export async function servePublicVideoPreview(request: Request, env: Env, token:
   const escapedMediaUrl = escapeHtml(mediaUrl);
   const contentType = escapeHtml(shareVideoContentType(video.content_type, video.original_name));
   const title = escapeHtml(video.original_name || "Shared video");
-  const description = "Shared video from Concert Archive";
+  const description = "Shared video from Concert Thing";
   const escapedDescription = escapeHtml(description);
   const duration = video.duration_ms === null ? "" : `<meta property="og:video:duration" content="${Math.max(0, Math.round(video.duration_ms / 1000))}">`;
   const html = `<!doctype html>
@@ -166,7 +166,7 @@ export async function servePublicVideoPreview(request: Request, env: Env, token:
     <title>${title}</title>
     <meta name="description" content="${escapedDescription}">
     <meta property="og:type" content="video.other">
-    <meta property="og:site_name" content="Concert Archive">
+    <meta property="og:site_name" content="Concert Thing">
     <meta property="og:title" content="${title}">
     <meta property="og:description" content="${escapedDescription}">
     <meta property="og:url" content="${escapedPageUrl}">

@@ -21,7 +21,7 @@ export default function TabsLayout() {
     },
   })}>
     <Tabs.Screen name="library" options={{ title: "Library" }} />
-    <Tabs.Screen name="inbox" options={{ title: "Inbox" }} />
+    <Tabs.Screen name="inbox" options={{ title: "Unassigned videos" }} />
     <Tabs.Screen name="shows" options={{ title: "Shows" }} />
     <Tabs.Screen name="queue" options={{ title: "Queue" }} />
   </Tabs>;

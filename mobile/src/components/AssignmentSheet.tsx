@@ -10,7 +10,7 @@ export function AssignmentSheet({ visible, shows, selectedId, onClose, onSelect,
     <View className="flex-1 justify-end" style={{ backgroundColor: tokens.colors.scrim }}>
       <View className="max-h-[78%] rounded-t-[20px] bg-surface pb-8 pt-3">
         <View className="flex-row items-center justify-between px-5 pb-3">
-          <View><Text className="font-display text-[23px] text-ink">Assign to show</Text><Text className="mt-1 font-sans text-[14px] text-muted">Choose one event or leave it in Inbox.</Text></View>
+          <View><Text className="font-display text-[23px] text-ink">Assign to show</Text><Text className="mt-1 font-sans text-[14px] text-muted">Choose one event or leave it in Unassigned videos.</Text></View>
           <Pressable accessibilityRole="button" accessibilityLabel="Close assignment sheet" onPress={onClose} className="h-12 w-12 items-center justify-center"><Ionicons name="close" size={24} color={tokens.colors.ink} /></Pressable>
         </View>
         <Hairline />
@@ -25,7 +25,7 @@ export function AssignmentSheet({ visible, shows, selectedId, onClose, onSelect,
           </> : null}
           <Pressable accessibilityRole="button" accessibilityLabel="Remove show assignment" onPress={() => onSelect(null)} className="min-h-14 flex-row items-center px-5">
             <Ionicons name={!selectedId ? "radio-button-on" : "radio-button-off"} size={21} color={!selectedId ? tokens.colors.accent : tokens.colors.muted} />
-            <Text className="ml-3 font-sans text-[16px] text-ink">Inbox — unassigned</Text>
+            <Text className="ml-3 font-sans text-[16px] text-ink">Unassigned videos — unassigned</Text>
           </Pressable>
           {shows.map((show) => <Pressable key={show.id} accessibilityRole="button" accessibilityLabel={`Assign to ${show.title}`} onPress={() => onSelect(show.id)} className="min-h-14 flex-row items-center px-5">
             <Ionicons name={selectedId === show.id ? "radio-button-on" : "radio-button-off"} size={21} color={selectedId === show.id ? tokens.colors.accent : tokens.colors.muted} />

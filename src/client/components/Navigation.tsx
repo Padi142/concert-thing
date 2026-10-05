@@ -6,7 +6,7 @@ export type ViewName = "library" | "inbox" | "shows" | "queue" | "admin";
 
 const tabs: { name: ViewName; label: string; icon: typeof Images }[] = [
   { name: "library", label: "Library", icon: Images },
-  { name: "inbox", label: "Inbox", icon: Inbox },
+  { name: "inbox", label: "Unassigned videos", icon: Inbox },
   { name: "shows", label: "Shows", icon: CalendarDays },
   { name: "queue", label: "Queue", icon: UploadCloud },
 ];
@@ -16,7 +16,7 @@ export default function Navigation({ active, onNavigate, inboxCount, isAdmin = f
   return <>
     <header className="sticky top-0 z-40 hidden border-b border-line bg-canvas md:block">
       <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-5">
-        <a href="#top" onClick={event => { event.preventDefault(); onNavigate("library"); }} className="font-display text-lg tracking-tight">Concert Archive</a>
+        <a href="#top" onClick={event => { event.preventDefault(); onNavigate("library"); }} className="font-display text-lg tracking-tight">Concert Thing</a>
         <nav className="flex items-center gap-1 text-sm font-semibold" aria-label="Primary navigation">
           {visibleTabs.map(({ name, label, icon: Icon }) => <button key={name} type="button" onClick={() => onNavigate(name)} aria-current={active === name ? "page" : undefined} className={`flex min-h-10 items-center gap-2 rounded-control px-3 transition ${active === name ? "bg-accentSoft text-blue" : "text-muted hover:text-ink"}`}>
             <Icon size={16} />{label}{name === "inbox" && inboxCount > 0 ? ` · ${inboxCount}` : ""}

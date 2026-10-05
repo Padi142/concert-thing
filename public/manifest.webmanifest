@@ -1,6 +1,6 @@
 {
-  "name": "Concert Archive",
-  "short_name": "Archive",
+  "name": "Concert Thing",
+  "short_name": "Concert Thing",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#f3f0e8",

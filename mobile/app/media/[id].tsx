@@ -138,7 +138,7 @@ export default function MediaDetailScreen() {
       {error ? <ErrorLine message={error} onRetry={refresh} /> : null}
       {item ? <>
         <View className="mx-5 overflow-hidden rounded-[12px] bg-line"><MediaPreview item={item} /></View>
-        <View className="mt-4 px-5"><Text className="font-sans text-[15px] text-muted">{item.captured_at ? new Date(item.captured_at).toLocaleString() : "Capture time not available"}{item.duration_ms ? ` · ${Math.round(item.duration_ms / 1000)} sec` : ""}</Text><View className="mt-4 flex-row items-center"><View className="min-w-0 flex-1"><Text className="font-display text-[20px] text-ink">{item.show_title ?? "Inbox"}</Text><Text className="mt-1 font-sans text-[14px] text-muted">{item.show_title ? "Assigned show" : "No show assigned"}</Text></View><QuietButton onPress={() => setAssignVisible(true)}>Change</QuietButton></View></View>
+        <View className="mt-4 px-5"><Text className="font-sans text-[15px] text-muted">{item.captured_at ? new Date(item.captured_at).toLocaleString() : "Capture time not available"}{item.duration_ms ? ` · ${Math.round(item.duration_ms / 1000)} sec` : ""}</Text><View className="mt-4 flex-row items-center"><View className="min-w-0 flex-1"><Text className="font-display text-[20px] text-ink">{item.show_title ?? "Unassigned videos"}</Text><Text className="mt-1 font-sans text-[14px] text-muted">{item.show_title ? "Assigned show" : "No show assigned"}</Text></View><QuietButton onPress={() => setAssignVisible(true)}>Change</QuietButton></View></View>
         {item.media_type === "video" ? <View className="mt-7 px-5">
           <View className="flex-row items-center justify-between">
             <View className="min-w-0 flex-1">

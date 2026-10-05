@@ -17,7 +17,8 @@
     "test": "pnpm run test:upload && pnpm run test:admin && pnpm run test:auth && pnpm run test:recognition && pnpm run test:sharing && pnpm run test:downloads && pnpm run test:tenancy && pnpm run test:storage",
     "check": "pnpm run test && pnpm exec tsc --noEmit && pnpm exec vite build",
     "deploy": "pnpm run check && pnpm exec wrangler deploy",
-    "termux:shim": "node scripts/termux-wrangler-shim.mjs"
+    "termux:shim": "node scripts/termux-wrangler-shim.mjs",
+    "screenshots:serve": "vite --config scripts/screenshots/vite.config.ts"
   },
   "dependencies": {
     "@clerk/backend": "^3.16.10",

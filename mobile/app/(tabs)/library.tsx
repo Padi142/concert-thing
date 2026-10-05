@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { RefreshControl, Text, View } from "react-native";
+import { Pressable, RefreshControl, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { FlashList } from "@shopify/flash-list";
@@ -19,7 +19,7 @@ import type { MediaItem } from "../../src/types";
 function groupByShow(items: MediaItem[], shows: { id: string; title: string; venue: string; starts_at: string }[]) {
   const groups = shows.map((show) => ({ show, items: items.filter((item) => item.show_id === show.id) })).filter((group) => group.items.length > 0);
   const unassigned = items.filter((item) => !item.show_id);
-  if (unassigned.length) groups.push({ show: { id: "inbox", title: "Unassigned", venue: "Inbox", starts_at: "" }, items: unassigned });
+  if (unassigned.length) groups.push({ show: { id: "inbox", title: "Unassigned videos", venue: "", starts_at: "" }, items: unassigned });
   return groups;
 }
 
@@ -85,7 +85,7 @@ export default function LibraryScreen() {
     ListHeaderComponent={listHeader}
     ListEmptyComponent={!loading && !error ? <EmptyState icon={media.length ? "search-outline" : "images-outline"} title={media.length ? "No matches" : "Your archive starts here"} detail={media.length ? "Try a filename, show, or confirmed song title." : "Select photos or videos from local storage. They are copied into an offline-safe queue before upload."} action={!media.length ? <IconButton icon="add" label="Add your first files" onPress={addMedia} tone="accent" /> : undefined} /> : null}
     contentContainerStyle={{ paddingBottom: 32 }}
-    renderItem={({ item: row }) => <View className="mb-6"><View className={`mb-3 px-5 ${row.first ? "" : "hidden"}`}><Text className="font-display text-[20px] text-ink">{row.show.title}</Text><Text className="mt-1 font-sans text-[14px] text-muted">{row.show.venue}{row.show.starts_at ? ` · ${new Date(row.show.starts_at).toLocaleDateString()}` : ""}</Text><Hairline className="mt-3" /></View><View className="flex-row px-1">{row.items.map((item) => <View key={item.id} className="flex-1 px-0.5"><MediaTile item={item} songMatch={matchByMedia.get(item.id)} onPress={() => router.push(`/media/${item.id}`)} /></View>)}{row.items.length < 3 ? <View className="flex-1 px-0.5" /> : null}{row.items.length < 2 ? <View className="flex-1 px-0.5" /> : null}</View></View>}
+    renderItem={({ item: row }) => <View className="mb-6"><View className={`mb-3 px-5 ${row.first ? "" : "hidden"}`}>{row.show.id === "inbox" ? <Text className="font-display text-[20px] text-ink">{row.show.title}</Text> : <Pressable accessibilityRole="button" accessibilityLabel={`Open ${row.show.title}`} onPress={() => router.push(`/show/${row.show.id}`)}><Text className="font-display text-[20px] text-ink">{row.show.title}</Text></Pressable>}{row.show.id !== "inbox" ? <Text className="mt-1 font-sans text-[14px] text-muted">{row.show.venue}{row.show.starts_at ? ` · ${new Date(row.show.starts_at).toLocaleDateString()}` : ""}</Text> : null}<Hairline className="mt-3" /></View><View className="flex-row px-1">{row.items.map((item) => <View key={item.id} className="flex-1 px-0.5"><MediaTile item={item} songMatch={matchByMedia.get(item.id)} onPress={() => router.push(`/media/${item.id}`)} /></View>)}{row.items.length < 3 ? <View className="flex-1 px-0.5" /> : null}{row.items.length < 2 ? <View className="flex-1 px-0.5" /> : null}</View></View>}
   />
     <Dialog visible={addOpen} spec={{ title: "Add to archive", message: "Choose where the files are stored." }} onClose={() => setAddOpen(false)}>
       <DialogOption icon="folder-open-outline" label="Files" detail="Documents and downloads on this device" onPress={() => void addFrom(chooseDocuments, "Could not add files")} />
