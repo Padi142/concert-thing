@@ -6,6 +6,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useArchive } from "../../src/hooks/useArchive";
 import { useRecognition } from "../../src/hooks/useRecognition";
 import { addManualSongMatch, deleteMedia, deleteSongMatch, reviewSongMatch } from "../../src/lib/api";
+import { isUnlikelyMatch } from "../../src/lib/mediaDisplay";
 import { enqueueRecognition } from "../../src/lib/recognitionQueue";
 import { AssignmentSheet } from "../../src/components/AssignmentSheet";
 import { Dialog, DialogOption, useDialog } from "../../src/components/Dialog";
@@ -40,14 +41,15 @@ function MatchEditor({ visible, title, artist, manual, heading, submitLabel, onC
 function MatchRow({ match, onConfirm, onDismiss, onEdit, onDelete }: { match: SongMatch; onConfirm: () => void; onDismiss: () => void; onEdit: () => void; onDelete: () => void }) {
   const tokens = useThemeTokens();
   const assigned = match.review_state === "confirmed" || match.review_state === "edited" || match.review_state === "manual";
-  const stateLabel = match.review_state === "manual" ? "Added manually" : match.review_state === "edited" ? "Edited + added" : match.review_state === "confirmed" ? "Added" : "Suggested";
+  const unlikely = isUnlikelyMatch(match);
+  const stateLabel = match.review_state === "manual" ? "Added manually" : match.review_state === "edited" ? "Edited + added" : match.review_state === "confirmed" ? "Added" : unlikely ? "Unlikely at this show" : "Suggested";
   return <View className="border-b border-line py-4">
     <View className="min-w-0">
       <Text numberOfLines={1} className="font-sans text-[16px] font-semibold text-ink">{match.title || match.candidate_title || "Unidentified song"}</Text>
       <Text numberOfLines={1} className="mt-0.5 font-sans text-[14px] text-muted">{match.artist || match.candidate_artist || "Artist unknown"}</Text>
       <View className="mt-2 flex-row items-center">
-        <Ionicons name={assigned ? "checkmark-circle" : "sparkles-outline"} size={15} color={assigned ? tokens.colors.success : tokens.colors.accent} />
-        <Text className={`ml-1.5 font-sans text-[12px] font-semibold uppercase tracking-[0.8px] ${assigned ? "text-success" : "text-blue"}`}>
+        <Ionicons name={assigned ? "checkmark-circle" : unlikely ? "help-circle-outline" : "sparkles-outline"} size={15} color={assigned ? tokens.colors.success : unlikely ? tokens.colors.muted : tokens.colors.accent} />
+        <Text className={`ml-1.5 font-sans text-[12px] font-semibold uppercase tracking-[0.8px] ${assigned ? "text-success" : unlikely ? "text-muted" : "text-blue"}`}>
           {stateLabel}{!assigned && match.confidence !== null ? ` · ${Math.round(match.confidence)}%` : ""}{match.start_ms > 0 ? ` · ${Math.round(match.start_ms / 1000)}s` : ""}
         </Text>
       </View>
@@ -76,7 +78,9 @@ export default function MediaDetailScreen() {
   const item = media.find((candidate) => candidate.id === id);
   const recognitionEntry = useRecognition(id, item?.media_type === "video");
   const recognition = recognitionEntry?.status ?? null;
-  const matches = useMemo(() => songMatches.filter((match) => match.media_id === id && match.review_state !== "rejected"), [songMatches, id]);
+  const matches = useMemo(() => songMatches
+    .filter((match) => match.media_id === id && match.review_state !== "rejected")
+    .sort((a, b) => Number(isUnlikelyMatch(a)) - Number(isUnlikelyMatch(b))), [songMatches, id]);
   const assignedMatches = useMemo(() => matches.filter((match) => match.review_state === "confirmed" || match.review_state === "edited" || match.review_state === "manual"), [matches]);
   const [assignVisible, setAssignVisible] = useState(false);
   const [editor, setEditor] = useState<{ match: SongMatch | null; manual: boolean } | null>(null);

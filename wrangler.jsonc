@@ -20,6 +20,7 @@
   ],
   "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "concert-thing-media" }],
   "stream": { "binding": "STREAM" },
+  "ai": { "binding": "AI" },
   "vars": {
     "ACRCLOUD_REGION": "eu-west-1",
     "CLERK_AUTHORIZED_PARTIES": "https://shows.krejzac.cz,https://concert-thing.padi142.workers.dev,http://localhost:5173"

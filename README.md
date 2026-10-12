@@ -49,13 +49,13 @@ After a concert, your phone holds dozens of multi-hundred-megabyte clips with na
   <img src="docs/screenshots/mobile-detail.png" alt="Video detail sheet on a phone" width="260" />
 </p>
 
-> Screenshots use generated demo data. See [Regenerating screenshots](#regenerating-screenshots).
+> Screenshots use generated demo data. See [Regenerating screenshots](#regenerating-screenshots). Photos in the first show are from "Yung Lean at the Vogue March 31st, 2016" by Kati Jenson, [CC BY 2.0](https://creativecommons.org/licenses/by/2.0), cropped; see [`scripts/screenshots/photos/CREDITS.md`](scripts/screenshots/photos/CREDITS.md).
 
 ## Features
 
 - **Resumable uploads at scale.** 8 MiB multipart uploads stream directly to R2, two files run concurrently, interrupted files resume, and SHA-256 hashing rejects duplicate videos before any bytes are sent.
-- **Automatic show assignment.** Capture times from MP4 metadata or file timestamps are matched against show windows. Ambiguous media goes to an *Unassigned videos* inbox, and an owner's manual choice always overrides automatic assignment.
-- **Song recognition.** Every video is submitted asynchronously to ACRCloud. Matches come back with timestamps and confidence and can be confirmed, edited, rejected, or added by hand. The library is searchable by song and artist.
+- **Automatic show assignment.** Capture times from MP4 metadata or file timestamps are matched against show windows. Ambiguous media goes to an *Unassigned videos* inbox, where recognized songs can still settle the show, and an owner's manual choice always overrides automatic assignment.
+- **Song recognition.** Every video is submitted asynchronously to ACRCloud. Matches come back with timestamps and confidence and can be confirmed, edited, rejected, or added by hand. Cloudflare's Clef decision model judges each candidate against the show's artists, so unlikely ones stay out of the way. The library is searchable by song and artist.
 - **Adaptive streaming.** Originals stay private in R2. Cloudflare Stream transcodes them for adaptive playback behind short-lived signed tokens, and the app falls back to authenticated R2 range requests while encoding is still running.
 - **Sharing.** Revocable, unguessable links work for a whole show or a single video. Visitors can watch, see the recognized setlist, and download originals. Photos, other shows, and owner controls stay private.
 - **Multi-tenant accounts and quotas.** Clerk authentication on web and mobile (including native Sign in with Apple), strict per-account isolation, and per-owner storage allowances with atomic reservations, plan tiers, and additive grants managed from an admin panel.
@@ -109,10 +109,11 @@ The Worker's HTTP interface is the only seam between clients and storage, and D1
 | --- | --- |
 | Web client | React, TypeScript, Vite, Tailwind CSS, lucide-react |
 | API | Cloudflare Workers (TypeScript), cron triggers |
-| Data | Cloudflare D1 (SQLite) with 11 versioned migrations |
+| Data | Cloudflare D1 (SQLite) with 12 versioned migrations |
 | Media | Cloudflare R2 (multipart), Cloudflare Stream (adaptive HLS, signed URLs) |
 | Auth | Clerk (web, Expo, native Apple sign-in), JWT verification at the edge |
 | Recognition | ACRCloud File Scanning |
+| Decisions | Clef on Workers AI |
 | Mobile | Expo SDK 57, React Native, Expo Router, NativeWind, expo-sqlite, custom Kotlin module |
 
 ## Project structure
@@ -131,6 +132,7 @@ src/server/               Worker implementation
   storage.ts              Allowances, reservations, and reconciliation
   sharing.ts              Show and video share links
   recognition/            Provider-neutral recognition + ACRCloud adapter
+  decisions/              Clef judgements of Song Matches and open Assignments
 src/worker.ts             Cloudflare entry point
 migrations/               D1 schema history
 mobile/                   Expo companion app (see mobile/README.md)
@@ -189,6 +191,7 @@ PLAYWRIGHT_CORE=/path/to/playwright-core CHROMIUM=/usr/bin/chromium-browser \
 
 ## Behaviour notes
 
-- **Assignment.** Media is assigned automatically only when its timestamp falls inside exactly one show. A show without an end time gets a conservative six-hour window, and overlapping or unmatched windows leave the item unassigned.
+- **Assignment.** Media is assigned automatically only when its timestamp falls inside exactly one show. A show without an end time gets a conservative six-hour window, and overlapping or unmatched windows leave the item unassigned. Once a video's songs are recognized, Clef picks among shows within three hours of the capture time and assigns only at 85% probability or more.
+- **Plausibility.** Each pending Song Match gets a probability that it was performed at the video's show, re-judged when the owner reassigns the video. Below 25% it is collapsed in review. Nothing is confirmed or rejected automatically, and a failed or missing model call changes nothing.
 - **Storage.** Each owner has one decimal-byte allowance, made up of the plan base plus active grants. Only completed originals count as usage. An owner who goes over the allowance keeps access to the library, but new uploads are blocked.
 - **Legacy data.** The first Clerk account to sign in claims the pre-Clerk archive exactly once. Later accounts start with empty, isolated libraries.

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { AlertCircle, Music2, ScanSearch } from "lucide-react";
 import { api } from "../api";
-import { formatDuration } from "../mediaDisplay";
+import { formatDuration, isUnlikelyMatch } from "../mediaDisplay";
 import { recognizeStoredVideo } from "../recognition";
 import type { MediaItem, RecognitionStatus, Report, SongMatch } from "../types";
 
@@ -79,6 +79,8 @@ export default function SongMatches({ item, matches, onChanged, report }: { item
   }
 
   const visibleMatches = matches.filter(match => match.review_state !== "rejected");
+  const unlikelyMatches = visibleMatches.filter(isUnlikelyMatch);
+  const listedMatches = visibleMatches.filter(match => !isUnlikelyMatch(match));
   const mayRetry = job?.status === "failed" && job.attempt_count < 2;
   const showManual = visibleMatches.length === 0 && !!job && ["failed", "no_match", "unsupported"].includes(job.status);
   const recognitionNote = job?.status === "failed"
@@ -88,26 +90,30 @@ export default function SongMatches({ item, matches, onChanged, report }: { item
       : job?.status === "unsupported"
         ? "Automatic recognition could not read this video's audio."
         : null;
+  const renderMatch = (match: SongMatch) => <div key={match.id} className="border-l-2 border-blue pl-3 text-sm">
+    <div className="flex justify-between gap-2"><strong>{match.title}</strong><span className="shrink-0 text-subtle">{formatDuration(match.start_ms)}</span></div>
+    <div className="text-muted">{match.artist}{match.confidence !== null ? ` · ${Math.round(match.confidence)}% confidence` : ""}</div>
+    {match.review_state === "pending" && editing !== match.id && <div className="mt-1.5 flex gap-1 font-semibold text-blue">
+      <button type="button" className="btn-quiet -ml-3 min-h-9" onClick={() => void review(match, "confirm")}>Confirm</button>
+      <button type="button" className="btn-quiet min-h-9" onClick={() => setEditing(match.id)}>Edit</button>
+      <button type="button" className="btn-quiet min-h-9 !text-muted" onClick={() => void review(match, "reject")}>Dismiss</button>
+    </div>}
+    {editing === match.id && <EditMatch match={match} onSave={(title, artist) => void review(match, "edit", title, artist)} onCancel={() => setEditing(null)} />}
+    {match.review_state !== "pending" && <small className="uppercase tracking-wide text-subtle">{match.review_state}</small>}
+  </div>;
   return <div>
     <div className="flex items-center justify-between gap-2">
-      <span className="flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-[.11em] text-muted"><Music2 size={14} />{visibleMatches.length ? `Songs in this video (${visibleMatches.length})` : "Songs in this video"}</span>
+      <span className="flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-[.11em] text-muted"><Music2 size={14} />{listedMatches.length ? `Songs in this video (${listedMatches.length})` : "Songs in this video"}</span>
       <button type="button" className="btn-quiet min-h-10 !px-2" disabled={working || (!!job && !terminal.has(job.status)) || (job?.status === "failed" && !mayRetry)} onClick={() => void recognize()}>
         {mayRetry ? "Retry once" : visibleMatches.length ? "Find songs again" : job ? "Try again" : "Find songs"}
       </button>
     </div>
     {recognitionNote && <div className="mt-2 border-l-2 border-danger py-2 pl-3 text-sm leading-snug text-danger"><AlertCircle className="mb-1" size={14} /><span>{recognitionNote}</span></div>}
     {(progress || (job && !recognitionNote)) && <p className="mt-2 text-[13px] text-muted">{progress || statusLabel(job!)}</p>}
-    <div className="mt-3 space-y-3">{visibleMatches.map(match => <div key={match.id} className="border-l-2 border-blue pl-3 text-sm">
-      <div className="flex justify-between gap-2"><strong>{match.title}</strong><span className="shrink-0 text-subtle">{formatDuration(match.start_ms)}</span></div>
-      <div className="text-muted">{match.artist}{match.confidence !== null ? ` · ${Math.round(match.confidence)}% confidence` : ""}</div>
-      {match.review_state === "pending" && editing !== match.id && <div className="mt-1.5 flex gap-1 font-semibold text-blue">
-        <button type="button" className="btn-quiet -ml-3 min-h-9" onClick={() => void review(match, "confirm")}>Confirm</button>
-        <button type="button" className="btn-quiet min-h-9" onClick={() => setEditing(match.id)}>Edit</button>
-        <button type="button" className="btn-quiet min-h-9 !text-muted" onClick={() => void review(match, "reject")}>Dismiss</button>
-      </div>}
-      {editing === match.id && <EditMatch match={match} onSave={(title, artist) => void review(match, "edit", title, artist)} onCancel={() => setEditing(null)} />}
-      {match.review_state !== "pending" && <small className="uppercase tracking-wide text-subtle">{match.review_state}</small>}
-    </div>)}</div>
+    <div className="mt-3 space-y-3">{listedMatches.map(renderMatch)}</div>
+    {unlikelyMatches.length > 0 && <details className="mt-3 text-sm"><summary className="cursor-pointer text-muted">{unlikelyMatches.length} unlikely at this show</summary>
+      <div className="mt-3 space-y-3">{unlikelyMatches.map(renderMatch)}</div>
+    </details>}
     {showManual && <details className="mt-4 text-sm"><summary className="cursor-pointer font-semibold text-blue"><ScanSearch className="mr-1 inline" size={14} />Add a song manually</summary>
       <form className="mt-3 grid gap-3" onSubmit={event => void addManual(event)}>
         <label>Song title<input required name="title" placeholder="Song title" /></label>

@@ -31,6 +31,7 @@ export type SongMatch = {
   start_ms: number;
   end_ms: number | null;
   confidence: number | null;
+  plausibility: number | null;
   candidate_title: string | null;
   candidate_artist: string | null;
   review_state: "pending" | "confirmed" | "rejected" | "edited" | "manual";

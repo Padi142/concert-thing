@@ -30,7 +30,7 @@ const steps = (...actions) => async page => { for (const action of actions) awai
 
 await shot("library", desktop, "/");
 await shot("library-dark", desktop, "/", undefined, "dark");
-await shot("show", desktop, "/", click("Open Fontaines D.C. — Romance Tour"));
+await shot("show", desktop, "/", click("Open Yung Lean — Forever Yung Tour"));
 await shot("media-detail", desktop, "/", steps(click("Open IMG_4810.MOV"), showSongs));
 await shot("queue", desktop, "/", steps(async page => page.getByRole("button", { name: "Queue" }).first().click()));
 await shot("admin", desktop, "/?admin", steps(async page => page.getByRole("button", { name: "Admin" }).first().click()));

@@ -26,6 +26,7 @@ function migrate(database: DatabaseSync): void {
     "0001_initial.sql", "0002_assignment_provenance.sql", "0003_song_recognition.sql",
     "0004_stream_video.sql", "0005_duplicate_videos.sql", "0005_mobile_upload_idempotency.sql",
     "0006_public_show_sharing.sql", "0007_short_public_links.sql", "0008_clerk_tenancy.sql", "0009_public_video_sharing.sql", "0010_storage_quota.sql",
+    "0011_admin_panel.sql", "0012_song_match_plausibility.sql",
   ]) database.exec(readFileSync(`migrations/${migration}`, "utf8"));
 }
 

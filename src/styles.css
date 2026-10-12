@@ -19,6 +19,8 @@
   --c-success: #087443;
   --c-success-soft: #e7f6ee;
   --c-placeholder: #e7ebf2;
+  --c-cloudflare: #f38020;
+  --c-cloudflare-ink: #a8500a;
   --scrim: rgba(23, 26, 32, 0.44);
   --scrim-strong: rgba(23, 26, 32, 0.8);
 }
@@ -41,6 +43,8 @@
     --c-success: #58d69a;
     --c-success-soft: #14291f;
     --c-placeholder: #1a2231;
+    --c-cloudflare: #f38020;
+    --c-cloudflare-ink: #ffa351;
     --scrim: rgba(4, 6, 10, 0.58);
     --scrim-strong: rgba(4, 6, 10, 0.88);
   }
@@ -139,4 +143,14 @@
     .admin-apply { flex: 1 1 100%; justify-content: center; }
   }
 }
-@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } * { transition: none !important; } }
+@layer components {
+  .landing-song { animation: landing-recognized .45s ease-out both; }
+  .landing-listening { opacity: 0; animation: landing-listening .3s ease-in both; }
+  @media (min-width: 768px) {
+    .landing-journey { position: relative; }
+    .landing-journey::before { content: ""; position: absolute; inset: 16px calc(25% - 50px) auto 0; height: 1px; background: var(--c-cloudflare); opacity: .5; }
+  }
+}
+@keyframes landing-recognized { from { opacity: 0; transform: translateY(4px); } }
+@keyframes landing-listening { from { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } * { transition: none !important; } .landing-song, .landing-listening { animation: none; } }

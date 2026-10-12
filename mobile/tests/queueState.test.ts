@@ -106,6 +106,7 @@ const match = (overrides: Partial<SongMatch>): SongMatch => ({
   start_ms: 0,
   end_ms: null,
   confidence: null,
+  plausibility: null,
   candidate_title: null,
   candidate_artist: null,
   review_state: "pending",
@@ -121,5 +122,9 @@ const chosen = preferredSongMatches([
 ]);
 assert.equal(chosen.get("media-1")?.id, "confirmed");
 assert.deepEqual(songMatchText(chosen.get("media-1")), { title: "Confirmed song", artist: "Confirmed artist" });
+assert.equal(preferredSongMatches([
+  match({ id: "unlikely", start_ms: 1_000, plausibility: 0.05 }),
+  match({ id: "likely", start_ms: 9_000, plausibility: 0.9 }),
+]).get("media-1")?.id, "likely", "an unlikely suggestion never outranks a plausible one");
 
 console.log("queueState tests passed");

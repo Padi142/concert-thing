@@ -19,14 +19,25 @@ export function formatMediaDuration(durationMs: number | null): string | null {
     : `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
+/** Pending candidates judged less plausible than this are kept out of the Owner's way. */
+const UNLIKELY_PLAUSIBILITY = 0.25;
+
+export function isUnlikelyMatch(match: SongMatch): boolean {
+  return match.review_state === "pending" && match.plausibility != null && match.plausibility < UNLIKELY_PLAUSIBILITY;
+}
+
+function matchPriority(match: SongMatch): number {
+  return REVIEW_PRIORITY[match.review_state] - (isUnlikelyMatch(match) ? 0.5 : 0);
+}
+
 export function preferredSongMatches(matches: SongMatch[]): Map<string, SongMatch> {
   const preferred = new Map<string, SongMatch>();
   for (const match of matches) {
     if (match.review_state === "rejected") continue;
     const current = preferred.get(match.media_id);
-    const isBetterState = !current || REVIEW_PRIORITY[match.review_state] > REVIEW_PRIORITY[current.review_state];
+    const isBetterState = !current || matchPriority(match) > matchPriority(current);
     const isEarlierSameState = current
-      && REVIEW_PRIORITY[match.review_state] === REVIEW_PRIORITY[current.review_state]
+      && matchPriority(match) === matchPriority(current)
       && match.start_ms < current.start_ms;
     if (isBetterState || isEarlierSameState) preferred.set(match.media_id, match);
   }

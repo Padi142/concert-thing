@@ -2,6 +2,7 @@ import type { Env } from "../env";
 import type { AuthContext } from "../auth";
 import { body, HttpError, json, text } from "../http";
 import { serveMedia } from "../media";
+import { judgeSongMatches } from "../decisions";
 import { AcrCloudProvider } from "./acrcloud";
 import type { ProviderMatch, RecognitionProvider } from "./provider";
 
@@ -178,6 +179,7 @@ export async function recognitionStatus(env: Env, mediaId: string, auth: AuthCon
       await env.DB.prepare("UPDATE recognition_jobs SET status = ?, poll_failure_count = 0, last_error = ?, updated_at = ? WHERE id = ?")
         .bind(result.state, lastError, now, current.id).run();
       current = { ...current, status: result.state, poll_failure_count: 0, last_error: lastError };
+      if (result.state === "completed") await judgeSongMatches(env, current.media_id, auth.userId);
     } catch {
       const failures = Math.min(2, current.poll_failure_count + 1);
       const status = failures >= 2 ? "failed" : "processing";
@@ -205,7 +207,7 @@ export async function serveRecognitionSource(request: Request, env: Env, token: 
 
 export async function listSongMatches(env: Env, auth: AuthContext): Promise<Response> {
   const result = await env.DB.prepare(`
-    SELECT sm.id,sm.media_id,sm.start_ms,sm.end_ms,sm.confidence,sm.candidate_title,
+    SELECT sm.id,sm.media_id,sm.start_ms,sm.end_ms,sm.confidence,sm.plausibility,sm.candidate_title,
       sm.candidate_artist,sm.review_state,sm.song_id,
       COALESCE(sm.owner_title,s.title,sm.candidate_title) AS title,
       COALESCE(sm.owner_artist,s.primary_artist,sm.candidate_artist) AS artist

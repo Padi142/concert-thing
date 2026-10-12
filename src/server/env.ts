@@ -14,11 +14,17 @@ export interface StreamBindingService {
   };
 }
 
+export interface DecisionBindingService {
+  run(model: string, input: Record<string, unknown>): Promise<unknown>;
+}
+
 export interface Env {
   DB: D1Database;
   MEDIA: R2Bucket;
   STREAM: StreamBindingService;
   ASSETS: Fetcher;
+  /** Workers AI, used for the Clef decision model. The archive works without it. */
+  AI?: DecisionBindingService;
   /** Clerk's public JWT verification key (PEM). Keep this as a Wrangler secret. */
   CLERK_JWT_KEY?: string;
   /** Optional comma-separated origins/parties accepted in Clerk azp claims. */

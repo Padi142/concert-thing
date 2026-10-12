@@ -1,10 +1,12 @@
 // Vite middleware serving a fixed demo archive for README screenshots.
+import { existsSync, readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import type { Plugin } from "vite";
 
 type Show = { id: string; title: string; venue: string; locality: string; starts_at: string; ends_at: string | null; timezone: string; artists: string[] };
 
 const shows: Show[] = [
-  { id: "s1", title: "Fontaines D.C. — Romance Tour", venue: "Forum Karlín", locality: "Prague", starts_at: "2025-11-14T20:00:00+01:00", ends_at: "2025-11-14T22:30:00+01:00", timezone: "Europe/Prague", artists: ["Fontaines D.C.", "Kneecap"] },
+  { id: "s1", title: "Yung Lean — Forever Yung Tour", venue: "Forum Karlín", locality: "Prague", starts_at: "2025-11-09T19:30:00+01:00", ends_at: "2025-11-09T22:00:00+01:00", timezone: "Europe/Prague", artists: ["Yung Lean"] },
   { id: "s2", title: "IDLES at Lucerna", venue: "Lucerna Great Hall", locality: "Prague", starts_at: "2025-09-03T19:30:00+02:00", ends_at: "2025-09-03T22:00:00+02:00", timezone: "Europe/Prague", artists: ["IDLES", "Lambrini Girls"] },
   { id: "s3", title: "Rock for People 2025", venue: "Festivalpark", locality: "Hradec Králové", starts_at: "2025-06-12T14:00:00+02:00", ends_at: "2025-06-12T23:59:00+02:00", timezone: "Europe/Prague", artists: ["Turnstile", "Wet Leg", "Bring Me The Horizon"] },
   { id: "s4", title: "Wet Leg — Moisturizer Tour", venue: "Roxy", locality: "Prague", starts_at: "2025-03-21T20:00:00+01:00", ends_at: null, timezone: "Europe/Prague", artists: ["Wet Leg"] },
@@ -38,12 +40,12 @@ const mediaSeed: Media[] = [
 ];
 
 const songs: Record<string, [string, string, number, number | null, string][]> = {
-  m01: [["Starburster", "Fontaines D.C.", 4_000, 97, "confirmed"], ["Here's the Thing", "Fontaines D.C.", 168_000, 91, "pending"]],
-  m02: [["Favourite", "Fontaines D.C.", 0, 98, "confirmed"]],
-  m04: [["In the Modern World", "Fontaines D.C.", 12_000, 94, "confirmed"]],
-  m06: [["Boys in the Better Land", "Fontaines D.C.", 0, 88, "pending"]],
-  m08: [["Jackie Down the Line", "Fontaines D.C.", 21_000, 96, "confirmed"]],
-  m09: [["Romance", "Fontaines D.C.", 0, 92, "confirmed"]],
+  m01: [["Ginseng Strip 2002", "Yung Lean", 4_000, 97, "confirmed"], ["Yoshi City", "Yung Lean", 168_000, 91, "pending"]],
+  m02: [["Forever Yung", "Yung Lean", 0, 98, "confirmed"]],
+  m04: [["Kyoto", "Yung Lean", 12_000, 94, "confirmed"]],
+  m06: [["Agony", "Yung Lean", 0, 88, "pending"]],
+  m08: [["Red Bottom Sky", "Yung Lean", 21_000, 96, "confirmed"]],
+  m09: [["Hennessy & Sailor Moon", "Yung Lean", 0, 92, "confirmed"]],
   m11: [["Never Fight a Man with a Perm", "IDLES", 2_000, 95, "confirmed"]],
   m12: [["Grace", "IDLES", 8_000, 93, "confirmed"]],
   m14: [["Danny Nedelko", "IDLES", 0, 99, "confirmed"]],
@@ -78,7 +80,14 @@ const matches = Object.entries(songs).flatMap(([mediaId, list]) => list.map(([ti
   candidate_title: title, candidate_artist: artist, review_state: state, song_id: null, title, artist,
 })));
 
-/** Procedural stage-light artwork standing in for real concert photos. */
+const playOverlay = (width: number, height: number) => `<circle cx="${width / 2}" cy="${height / 2}" r="${height * 0.09}" fill="rgba(0,0,0,.55)"/><polygon points="${width / 2 - height * 0.03},${height / 2 - height * 0.045} ${width / 2 - height * 0.03},${height / 2 + height * 0.045} ${width / 2 + height * 0.05},${height / 2}" fill="#fff"/><rect x="${width * 0.04}" y="${height * 0.93}" width="${width * 0.92}" height="6" rx="3" fill="rgba(255,255,255,.3)"/><rect x="${width * 0.04}" y="${height * 0.93}" width="${width * 0.35}" height="6" rx="3" fill="#2166f3"/>`;
+
+/** Real concert photos for the first Show, credited in photos/CREDITS.md. Media without one gets generated artwork. */
+const photoPath = (id: string) => fileURLToPath(new URL(`./photos/${id}.jpg`, import.meta.url));
+const photoOf = (id: string) => existsSync(photoPath(id)) ? readFileSync(photoPath(id)) : null;
+const photoPoster = (photo: Buffer, width = 1280, height = 720) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}"><image href="data:image/jpeg;base64,${photo.toString("base64")}" width="${width}" height="${height}" preserveAspectRatio="xMidYMid slice"/>${playOverlay(width, height)}</svg>`;
+
+/** Procedural stage-light artwork standing in for concert photos the demo does not have. */
 function stageArt(hue: number, seed: number, width = 1280, height = 960, play = false): string {
   const random = (n: number) => { const x = Math.sin(seed * 97.13 + n * 13.7) * 43758.5453; return x - Math.floor(x); };
   const beams = Array.from({ length: 5 }, (_, i) => {
@@ -95,7 +104,7 @@ function stageArt(hue: number, seed: number, width = 1280, height = 960, play = 
     return `<circle cx="${cx}" cy="${cy - r}" r="${r}"/><rect x="${cx - r * 1.6}" y="${cy - r * 0.2}" width="${r * 3.2}" height="${height}" rx="${r}"/>${arm}`;
   }).join("");
   const performer = `<g fill="#05060a" opacity=".92"><circle cx="${width * 0.5}" cy="${height * 0.47}" r="${width * 0.028}"/><rect x="${width * 0.47}" y="${height * 0.5}" width="${width * 0.06}" height="${height * 0.24}" rx="${width * 0.02}"/><rect x="${width * 0.4}" y="${height * 0.69}" width="${width * 0.2}" height="${height * 0.05}" rx="6"/></g>`;
-  const playButton = play ? `<circle cx="${width / 2}" cy="${height / 2}" r="${height * 0.09}" fill="rgba(0,0,0,.55)"/><polygon points="${width / 2 - height * 0.03},${height / 2 - height * 0.045} ${width / 2 - height * 0.03},${height / 2 + height * 0.045} ${width / 2 + height * 0.05},${height / 2}" fill="#fff"/><rect x="${width * 0.04}" y="${height * 0.93}" width="${width * 0.92}" height="6" rx="3" fill="rgba(255,255,255,.3)"/><rect x="${width * 0.04}" y="${height * 0.93}" width="${width * 0.35}" height="6" rx="3" fill="#2166f3"/>` : "";
+  const playButton = play ? playOverlay(width, height) : "";
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">
 <defs><filter id="b"><feGaussianBlur stdDeviation="14"/></filter>
 <radialGradient id="g" cx="50%" cy="35%" r="75%"><stop offset="0" stop-color="hsl(${hue},80%,42%)"/><stop offset=".55" stop-color="hsl(${(hue + 30) % 360},70%,14%)"/><stop offset="1" stop-color="#05060a"/></radialGradient>
@@ -110,10 +119,11 @@ const hueOf = (id: string) => mediaSeed.find(item => item.id === id)?.hue ?? 210
 const seedOf = (id: string) => Number(id.slice(1)) || 1;
 
 function stream(id: string) {
-  const poster = stageArt(hueOf(id), seedOf(id), 1280, 720, true);
+  const photo = photoOf(id);
+  const poster = photo ? photoPoster(photo) : stageArt(hueOf(id), seedOf(id), 1280, 720, true);
   return {
     status: "ready",
-    thumbnailUrl: svgUrl(stageArt(hueOf(id), seedOf(id), 640, 640)),
+    thumbnailUrl: photo ? `/api/media/${id}/content` : svgUrl(stageArt(hueOf(id), seedOf(id), 640, 640)),
     iframeUrl: `data:text/html;charset=utf-8,${encodeURIComponent(`<body style="margin:0;background:#000"><img style="width:100%;height:100vh;object-fit:cover;display:block" src="${svgUrl(poster)}"></body>`)}`,
   };
 }
@@ -155,8 +165,9 @@ export function demoApi(): Plugin {
         const path = (request.url ?? "").split("?")[0];
         const content = /^\/api\/media\/(\w+)\/content$/.exec(path);
         if (content) {
-          response.setHeader("content-type", "image/svg+xml");
-          response.end(stageArt(hueOf(content[1]), seedOf(content[1])));
+          const photo = photoOf(content[1]);
+          response.setHeader("content-type", photo ? "image/jpeg" : "image/svg+xml");
+          response.end(photo ?? stageArt(hueOf(content[1]), seedOf(content[1])));
           return;
         }
         for (const [pattern, handler] of routes) {

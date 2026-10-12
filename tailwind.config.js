@@ -20,6 +20,8 @@ export default {
         success: "var(--c-success)",
         successSoft: "var(--c-success-soft)",
         placeholder: "var(--c-placeholder)",
+        cloudflare: "var(--c-cloudflare)",
+        cloudflareInk: "var(--c-cloudflare-ink)",
       },
       fontFamily: {
         sans: ["IBM Plex Sans", "sans-serif"],

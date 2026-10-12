@@ -56,6 +56,10 @@ _Avoid_: Tier history, subscription grant
 A candidate identification of a Song within a time range of a video, carrying confidence and an Owner-review state. A video may have multiple Song Matches, and recognition never replaces an Owner correction.
 _Avoid_: Video song, tag
 
+**Plausibility**:
+The judged probability that a pending Song Match was performed at its Media Item's Show. It orders Owner review and can settle an open Assignment, but never changes a review state.
+_Avoid_: Confidence, score
+
 **Song**:
 A pragmatic, searchable identity for music in the Library, defined by a title and primary Artist. It does not claim to identify a composition or a specific commercial recording.
 _Avoid_: Track, composition, recording, audio fingerprint

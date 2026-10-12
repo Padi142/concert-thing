@@ -1,6 +1,7 @@
 import type { Env } from "./env";
 import type { AuthContext } from "./auth";
 import { body, HttpError, json, text } from "./http";
+import { rejudgeSongMatches } from "./decisions";
 import {
   UPLOAD_RETENTION_MS,
   StorageQuotaExceeded,
@@ -360,6 +361,7 @@ export async function assignMedia(request: Request, env: Env, mediaId: string, a
   }
   const result = await env.DB.prepare("UPDATE media_items SET show_id = ?, assignment_method = 'owner' WHERE id = ? AND owner_id = ? AND status = 'ready' AND deletion_started_at IS NULL").bind(showId, mediaId, auth.userId).run();
   if (!result.meta.changes) throw new HttpError(404, "Ready Media Item not found");
+  await rejudgeSongMatches(env, mediaId, auth.userId);
   return json({ id: mediaId, showId });
 }
 
